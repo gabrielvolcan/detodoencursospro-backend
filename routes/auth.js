@@ -2,9 +2,13 @@ const express = require('express');
 const router = express.Router();
 const Usuario = require('../models/Usuario');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const { auth } = require('../middleware/auth');
+const { enviarEmailVerificacion, enviarEmailRecuperacion } = require('../services/emailService');
 
-// Registro
+// ========================================
+// 📝 REGISTRO CON EMAIL DE VERIFICACIÓN
+// ========================================
 router.post('/registro', async (req, res) => {
   try {
     const { nombre, email, password, telefono } = req.body;
@@ -15,17 +19,48 @@ router.post('/registro', async (req, res) => {
       return res.status(400).json({ error: 'El email ya está registrado' });
     }
 
+    // Validar contraseña fuerte
+    if (password.length < 8) {
+      return res.status(400).json({ error: 'La contraseña debe tener al menos 8 caracteres' });
+    }
+
+    if (!/[A-Z]/.test(password)) {
+      return res.status(400).json({ error: 'La contraseña debe contener al menos una mayúscula' });
+    }
+
+    if (!/[0-9]/.test(password)) {
+      return res.status(400).json({ error: 'La contraseña debe contener al menos un número' });
+    }
+
+    if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
+      return res.status(400).json({ error: 'La contraseña debe contener al menos un carácter especial' });
+    }
+
+    // Generar token de verificación
+    const tokenVerificacion = crypto.randomBytes(32).toString('hex');
+
     // Crear nuevo usuario
     const usuario = new Usuario({
       nombre,
       email,
       password,
-      telefono: telefono || ''
+      telefono: telefono || '',
+      emailVerificado: false,
+      tokenVerificacion,
+      tokenVerificacionExpira: Date.now() + 24 * 60 * 60 * 1000 // 24 horas
     });
 
     await usuario.save();
 
-    // Generar token
+    // Enviar email de verificación
+    try {
+      await enviarEmailVerificacion(email, nombre, tokenVerificacion);
+    } catch (emailError) {
+      console.error('Error enviando email de verificación:', emailError);
+      // No fallar el registro si el email falla
+    }
+
+    // Generar token JWT
     const token = jwt.sign({ id: usuario._id }, process.env.JWT_SECRET, {
       expiresIn: '30d'
     });
@@ -35,16 +70,45 @@ router.post('/registro', async (req, res) => {
         id: usuario._id,
         nombre: usuario.nombre,
         email: usuario.email,
-        rol: usuario.rol
+        rol: usuario.rol,
+        emailVerificado: usuario.emailVerificado
       },
-      token
+      token,
+      mensaje: 'Registro exitoso. Por favor verifica tu email.'
     });
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
 });
 
-// Login
+// ========================================
+// ✉️ VERIFICAR EMAIL
+// ========================================
+router.get('/verificar-email/:token', async (req, res) => {
+  try {
+    const usuario = await Usuario.findOne({
+      tokenVerificacion: req.params.token,
+      tokenVerificacionExpira: { $gt: Date.now() }
+    });
+
+    if (!usuario) {
+      return res.status(400).json({ error: 'Token inválido o expirado' });
+    }
+
+    usuario.emailVerificado = true;
+    usuario.tokenVerificacion = undefined;
+    usuario.tokenVerificacionExpira = undefined;
+    await usuario.save();
+
+    res.json({ mensaje: 'Email verificado exitosamente' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ========================================
+// 🔐 LOGIN
+// ========================================
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -71,7 +135,8 @@ router.post('/login', async (req, res) => {
         id: usuario._id,
         nombre: usuario.nombre,
         email: usuario.email,
-        rol: usuario.rol
+        rol: usuario.rol,
+        emailVerificado: usuario.emailVerificado
       },
       token
     });
@@ -80,7 +145,88 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// Obtener perfil
+// ========================================
+// 🔑 SOLICITAR RECUPERACIÓN DE CONTRASEÑA
+// ========================================
+router.post('/recuperar-contraseña', async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    const usuario = await Usuario.findOne({ email });
+    if (!usuario) {
+      // Por seguridad, no revelar si el email existe
+      return res.json({ mensaje: 'Si el email existe, recibirás instrucciones para recuperar tu contraseña.' });
+    }
+
+    // Generar token de recuperación
+    const tokenRecuperacion = crypto.randomBytes(32).toString('hex');
+    usuario.resetPasswordToken = tokenRecuperacion;
+    usuario.resetPasswordExpires = Date.now() + 1 * 60 * 60 * 1000; // 1 hora
+
+    await usuario.save();
+
+    // Enviar email
+    try {
+      await enviarEmailRecuperacion(email, usuario.nombre, tokenRecuperacion);
+    } catch (emailError) {
+      console.error('Error enviando email de recuperación:', emailError);
+      return res.status(500).json({ error: 'Error al enviar el email. Intenta de nuevo más tarde.' });
+    }
+
+    res.json({ mensaje: 'Si el email existe, recibirás instrucciones para recuperar tu contraseña.' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ========================================
+// 🔓 RESTABLECER CONTRASEÑA
+// ========================================
+router.post('/restablecer-contraseña/:token', async (req, res) => {
+  try {
+    const { password } = req.body;
+
+    // Validar contraseña fuerte
+    if (password.length < 8) {
+      return res.status(400).json({ error: 'La contraseña debe tener al menos 8 caracteres' });
+    }
+
+    if (!/[A-Z]/.test(password)) {
+      return res.status(400).json({ error: 'La contraseña debe contener al menos una mayúscula' });
+    }
+
+    if (!/[0-9]/.test(password)) {
+      return res.status(400).json({ error: 'La contraseña debe contener al menos un número' });
+    }
+
+    if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
+      return res.status(400).json({ error: 'La contraseña debe contener al menos un carácter especial' });
+    }
+
+    const usuario = await Usuario.findOne({
+      resetPasswordToken: req.params.token,
+      resetPasswordExpires: { $gt: Date.now() }
+    });
+
+    if (!usuario) {
+      return res.status(400).json({ error: 'Token inválido o expirado' });
+    }
+
+    // Actualizar contraseña
+    usuario.password = password;
+    usuario.resetPasswordToken = undefined;
+    usuario.resetPasswordExpires = undefined;
+    await usuario.save();
+
+    res.json({ mensaje: 'Contraseña restablecida exitosamente' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ========================================
+// 👤 OBTENER PERFIL
+// ========================================
 router.get('/perfil', auth, async (req, res) => {
   try {
     const usuario = await Usuario.findById(req.usuario._id)
@@ -93,7 +239,9 @@ router.get('/perfil', auth, async (req, res) => {
   }
 });
 
-// Actualizar perfil
+// ========================================
+// ✏️ ACTUALIZAR PERFIL
+// ========================================
 router.patch('/perfil', auth, async (req, res) => {
   try {
     const { nombre, telefono } = req.body;
@@ -111,7 +259,8 @@ router.patch('/perfil', auth, async (req, res) => {
         nombre: usuario.nombre,
         email: usuario.email,
         telefono: usuario.telefono,
-        rol: usuario.rol
+        rol: usuario.rol,
+        emailVerificado: usuario.emailVerificado
       }
     });
   } catch (error) {
@@ -119,7 +268,9 @@ router.patch('/perfil', auth, async (req, res) => {
   }
 });
 
-// Obtener mis cursos (cursos comprados por el usuario)
+// ========================================
+// 📚 OBTENER MIS CURSOS
+// ========================================
 router.get('/usuarios/mis-cursos', auth, async (req, res) => {
   try {
     const usuario = await Usuario.findById(req.usuario._id)
