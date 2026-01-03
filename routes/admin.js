@@ -431,4 +431,31 @@ router.delete('/compra/:id', auth, esAdmin, async (req, res) => {
   }
 });
 
+// ========================================
+// 🔔 NOTIFICACIONES EN TIEMPO REAL
+// ========================================
+
+// Obtener contador de notificaciones
+router.get('/notificaciones/contador', auth, esAdmin, async (req, res) => {
+  try {
+    const pendientes = await Compra.countDocuments({
+      estadoPago: { $in: ['pendiente', 'en_revision'] }
+    });
+    
+    const ultimaCompra = await Compra.findOne({
+      estadoPago: { $in: ['pendiente', 'en_revision'] }
+    })
+    .sort({ createdAt: -1 })
+    .select('createdAt');
+    
+    res.json({
+      contador: pendientes,
+      ultimaActualizacion: ultimaCompra?.createdAt || null,
+      hayNuevas: pendientes > 0
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;
