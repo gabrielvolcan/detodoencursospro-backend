@@ -261,4 +261,174 @@ router.post('/rechazar-pago/:compraId', auth, esAdmin, async (req, res) => {
   }
 });
 
+// ========================================
+// 🆕 NUEVAS RUTAS - GESTIÓN AVANZADA
+// ========================================
+
+// Editar usuario
+router.put('/usuario/:id', auth, esAdmin, async (req, res) => {
+  try {
+    const { nombre, email, telefono, pais } = req.body;
+    
+    const usuario = await Usuario.findByIdAndUpdate(
+      req.params.id,
+      { nombre, email, telefono, pais },
+      { new: true, runValidators: true }
+    ).select('-password');
+
+    if (!usuario) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    res.json(usuario);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Eliminar usuario
+router.delete('/usuario/:id', auth, esAdmin, async (req, res) => {
+  try {
+    const usuario = await Usuario.findById(req.params.id);
+    
+    if (!usuario) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    // No permitir eliminar admin principal
+    if (usuario.email === 'admin@securityacademy.com') {
+      return res.status(403).json({ error: 'No se puede eliminar el administrador principal' });
+    }
+
+    await Usuario.findByIdAndDelete(req.params.id);
+    
+    res.json({ mensaje: 'Usuario eliminado exitosamente' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Quitar curso a usuario
+router.delete('/usuario/:usuarioId/curso/:cursoId', auth, esAdmin, async (req, res) => {
+  try {
+    const usuario = await Usuario.findById(req.params.usuarioId);
+    
+    if (!usuario) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    usuario.cursosComprados = usuario.cursosComprados.filter(
+      c => c.curso.toString() !== req.params.cursoId
+    );
+
+    await usuario.save();
+
+    // Decrementar contador de estudiantes del curso
+    await Curso.findByIdAndUpdate(req.params.cursoId, {
+      $inc: { estudiantes: -1 }
+    });
+
+    res.json({ mensaje: 'Curso removido del usuario' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Obtener todas las compras (con filtros)
+router.get('/todas-compras', auth, esAdmin, async (req, res) => {
+  try {
+    const { estado, desde, hasta, usuario } = req.query;
+    
+    let filtro = {};
+    
+    if (estado && estado !== 'todas') {
+      filtro.estadoPago = estado;
+    }
+    
+    if (desde || hasta) {
+      filtro.createdAt = {};
+      if (desde) filtro.createdAt.$gte = new Date(desde);
+      if (hasta) filtro.createdAt.$lte = new Date(hasta);
+    }
+    
+    if (usuario) {
+      filtro.usuario = usuario;
+    }
+    
+    const compras = await Compra.find(filtro)
+      .populate('usuario', 'nombre email telefono')
+      .populate('cursos.curso', 'titulo imagen')
+      .sort({ createdAt: -1 });
+    
+    res.json(compras);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Actualizar estado de compra
+router.put('/compra/:id/estado', auth, esAdmin, async (req, res) => {
+  try {
+    const { estadoPago, notasAdmin } = req.body;
+    
+    const estadosValidos = ['pendiente', 'en_revision', 'aprobado', 'rechazado'];
+    if (!estadosValidos.includes(estadoPago)) {
+      return res.status(400).json({ error: 'Estado inválido' });
+    }
+    
+    const compra = await Compra.findByIdAndUpdate(
+      req.params.id,
+      { estadoPago, notasAdmin },
+      { new: true }
+    )
+    .populate('usuario', 'nombre email')
+    .populate('cursos.curso', 'titulo');
+
+    if (!compra) {
+      return res.status(404).json({ error: 'Compra no encontrada' });
+    }
+
+    res.json(compra);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Eliminar compra
+router.delete('/compra/:id', auth, esAdmin, async (req, res) => {
+  try {
+    const compra = await Compra.findById(req.params.id);
+    
+    if (!compra) {
+      return res.status(404).json({ error: 'Compra no encontrada' });
+    }
+
+    // Si la compra estaba aprobada, remover cursos del usuario
+    if (compra.estadoPago === 'aprobado') {
+      const usuario = await Usuario.findById(compra.usuario);
+      
+      if (usuario) {
+        for (const item of compra.cursos) {
+          usuario.cursosComprados = usuario.cursosComprados.filter(
+            c => c.curso.toString() !== item.curso.toString()
+          );
+          
+          // Decrementar estudiantes del curso
+          await Curso.findByIdAndUpdate(item.curso, {
+            $inc: { estudiantes: -1 }
+          });
+        }
+        
+        await usuario.save();
+      }
+    }
+
+    await Compra.findByIdAndDelete(req.params.id);
+    
+    res.json({ mensaje: 'Compra eliminada exitosamente' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;
