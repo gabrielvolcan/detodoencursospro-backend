@@ -5,9 +5,13 @@ const cors = require('cors');
 
 const app = express();
 
-// Middleware
+// Middleware CORS - CORREGIDO PARA MÚLTIPLES ORÍGENES
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin: [
+    'http://localhost:5173',
+    'https://frontend-frk1yvp86-gabriel-volcans-projects.vercel.app',
+    'https://www.detodoencursos.com'
+  ],
   credentials: true
 }));
 
