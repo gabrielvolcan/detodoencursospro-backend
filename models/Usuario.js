@@ -27,6 +27,31 @@ const usuarioSchema = new mongoose.Schema({
     enum: ['usuario', 'admin'],
     default: 'usuario'
   },
+  // ========================================
+  // ✉️ CAMPOS DE VERIFICACIÓN DE EMAIL
+  // ========================================
+  emailVerificado: {
+    type: Boolean,
+    default: false
+  },
+  tokenVerificacion: {
+    type: String
+  },
+  tokenVerificacionExpira: {
+    type: Date
+  },
+  // ========================================
+  // 🔑 CAMPOS DE RECUPERACIÓN DE CONTRASEÑA
+  // ========================================
+  resetPasswordToken: {
+    type: String
+  },
+  resetPasswordExpires: {
+    type: Date
+  },
+  // ========================================
+  // 📚 CURSOS COMPRADOS
+  // ========================================
   cursosComprados: [{
     curso: {
       type: mongoose.Schema.Types.ObjectId,
@@ -37,7 +62,6 @@ const usuarioSchema = new mongoose.Schema({
       default: Date.now
     },
     precioCompra: Number,
-    // ✅ CORREGIDO: Array simple de IDs de temas vistos
     progresoVideos: [{
       type: String
     }],

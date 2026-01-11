@@ -193,14 +193,14 @@ const enviarEmailRecuperacion = async (email, nombre, token) => {
 };
 
 // ========================================
-// 📧 EMAIL DE COMPRA APROBADA
+// ✅ EMAIL DE COMPRA APROBADA
 // ========================================
-const enviarEmailCompraAprobada = async (email, nombre, cursos) => {
+const enviarEmailCompraAprobada = async (usuario, cursos, compra) => {
   const listaCursos = cursos.map(curso => `<li>${curso.titulo}</li>`).join('');
 
   const mailOptions = {
     from: `"Detodo en Cursos Pro" <${process.env.EMAIL_USER}>`,
-    to: email,
+    to: usuario.email,
     subject: '✅ Tu compra ha sido aprobada - Detodo en Cursos Pro',
     html: `
       <!DOCTYPE html>
@@ -256,8 +256,8 @@ const enviarEmailCompraAprobada = async (email, nombre, cursos) => {
           <h1>🎉 ¡Tu pago ha sido aprobado!</h1>
         </div>
         <div class="content">
-          <h2>Hola ${nombre},</h2>
-          <p>¡Excelentes noticias! Tu pago ha sido verificado y aprobado exitosamente.</p>
+          <h2>Hola ${usuario.nombre},</h2>
+          <p>¡Excelentes noticias! Tu pago de <strong>${compra.moneda} ${compra.total}</strong> ha sido verificado y aprobado exitosamente.</p>
           
           <p><strong>Ya puedes acceder a tus cursos:</strong></p>
           <ul>
@@ -278,11 +278,116 @@ const enviarEmailCompraAprobada = async (email, nombre, cursos) => {
     `
   };
 
-  await transporter.sendMail(mailOptions);
+  try {
+    await transporter.sendMail(mailOptions);
+  } catch (error) {
+    console.error('Error enviando email de aprobación:', error);
+    // No lanzar error para no bloquear la aprobación
+  }
+};
+
+// ========================================
+// ❌ EMAIL DE COMPRA RECHAZADA
+// ========================================
+const enviarEmailRechazo = async (usuario, motivo) => {
+  const mailOptions = {
+    from: `"Detodo en Cursos Pro" <${process.env.EMAIL_USER}>`,
+    to: usuario.email,
+    subject: '❌ Tu compra requiere revisión - Detodo en Cursos Pro',
+    html: `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+          }
+          .header {
+            background: linear-gradient(135deg, #ff4444 0%, #cc0000 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+            border-radius: 10px 10px 0 0;
+          }
+          .content {
+            background: #f9f9f9;
+            padding: 30px;
+            border-radius: 0 0 10px 10px;
+          }
+          .btn {
+            display: inline-block;
+            background: #00ff88;
+            color: #0a0a0a;
+            padding: 15px 30px;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: bold;
+            margin: 20px 0;
+          }
+          .warning {
+            background: #fff3cd;
+            border-left: 4px solid #ffa500;
+            padding: 15px;
+            margin: 20px 0;
+          }
+          .footer {
+            text-align: center;
+            margin-top: 30px;
+            color: #666;
+            font-size: 0.9em;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>⚠️ Comprobante Rechazado</h1>
+        </div>
+        <div class="content">
+          <h2>Hola ${usuario.nombre},</h2>
+          <p>Lamentamos informarte que tu comprobante de pago no pudo ser verificado.</p>
+          
+          <div class="warning">
+            <strong>Motivo del rechazo:</strong>
+            <p>${motivo || 'El comprobante no coincide con los datos de la compra o no es válido.'}</p>
+          </div>
+          
+          <p><strong>¿Qué puedes hacer?</strong></p>
+          <ul>
+            <li>Verifica que el comprobante sea legible y corresponda al monto exacto</li>
+            <li>Asegúrate de haber pagado a la cuenta correcta</li>
+            <li>Sube un nuevo comprobante desde tu panel de compras</li>
+            <li>Contáctanos si necesitas ayuda: ${process.env.EMAIL_USER}</li>
+          </ul>
+          
+          <div style="text-align: center;">
+            <a href="${process.env.FRONTEND_URL}/mis-compras" class="btn">Subir Nuevo Comprobante</a>
+          </div>
+        </div>
+        <div class="footer">
+          <p>© 2025 Detodo en Cursos Pro. Todos los derechos reservados.</p>
+        </div>
+      </body>
+      </html>
+    `
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+  } catch (error) {
+    console.error('Error enviando email de rechazo:', error);
+    // No lanzar error
+  }
 };
 
 module.exports = {
   enviarEmailVerificacion,
   enviarEmailRecuperacion,
-  enviarEmailCompraAprobada
+  enviarEmailCompraAprobada,
+  enviarEmailRechazo
 };

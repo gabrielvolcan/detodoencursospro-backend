@@ -12,9 +12,9 @@ const migrarYRecalcularPrecios = async () => {
     console.log(`📚 Encontrados ${cursos.length} cursos para migrar\n`);
 
     const tasas = {
-      peru: 3.75,
-      chile: 950,
-      argentina: 1000,
+      peru: 3.36,
+      chile: 894,
+      argentina: 1490,
       uruguay: 39,
       venezuela: 1,
       internacional: 1

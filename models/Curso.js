@@ -47,19 +47,17 @@ const cursoSchema = new mongoose.Schema({
     enum: ['Principiante', 'Intermedio', 'Avanzado'],
     default: 'Principiante'
   },
-  // Precio base en USD
   precioUSD: {
     type: Number,
     required: true,
     min: 0
   },
-  // Precios calculados por país (se generan automáticamente)
   precios: {
     peru: { monto: Number, moneda: { type: String, default: 'PEN' } },
     chile: { monto: Number, moneda: { type: String, default: 'CLP' } },
     argentina: { monto: Number, moneda: { type: String, default: 'ARS' } },
     uruguay: { monto: Number, moneda: { type: String, default: 'UYU' } },
-    venezuela: { monto: Number, moneda: { type: String, default: 'USD' } },
+    venezuela: { monto: Number, moneda: { type: String, default: 'VES' } },
     internacional: { monto: Number, moneda: { type: String, default: 'USD' } }
   },
   imagen: {
@@ -93,22 +91,21 @@ const cursoSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Middleware para calcular precios por país antes de guardar
+// Middleware para calcular precios por país (TASAS ACTUALIZADAS 10 ENERO 2026)
 cursoSchema.pre('save', function(next) {
   if (this.isModified('precioUSD')) {
-    // Tasas de cambio aproximadas (actualizar según necesites)
     const tasas = {
-      peru: 3.75,      // USD a PEN
-      chile: 950,      // USD a CLP
-      argentina: 1000, // USD a ARS
-      uruguay: 39,     // USD a UYU
-      venezuela: 1,    // USD (ya que usan dólares)
-      internacional: 1 // USD
+      peru: 3.36,
+      chile: 894,
+      argentina: 1505,
+      uruguay: 38.9,
+      venezuela: 50,
+      internacional: 1
     };
 
     this.precios = {
       peru: { 
-        monto: Math.round(this.precioUSD * tasas.peru), 
+        monto: (this.precioUSD * tasas.peru).toFixed(2), 
         moneda: 'PEN' 
       },
       chile: { 
@@ -120,12 +117,12 @@ cursoSchema.pre('save', function(next) {
         moneda: 'ARS' 
       },
       uruguay: { 
-        monto: Math.round(this.precioUSD * tasas.uruguay), 
+        monto: (this.precioUSD * tasas.uruguay).toFixed(2), 
         moneda: 'UYU' 
       },
       venezuela: { 
-        monto: this.precioUSD, 
-        moneda: 'USD' 
+        monto: (this.precioUSD * tasas.venezuela).toFixed(2), 
+        moneda: 'VES' 
       },
       internacional: { 
         monto: this.precioUSD, 

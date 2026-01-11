@@ -4,7 +4,7 @@ const Curso = require('../models/Curso');
 const Usuario = require('../models/Usuario');
 const Compra = require('../models/Compra');
 const { auth, esAdmin } = require('../middleware/auth');
-const { enviarEmailAprobacion, enviarEmailRechazo } = require('../services/emailService');
+const { enviarEmailCompraAprobada, enviarEmailRechazo } = require('../services/emailService');
 
 // Dashboard - estadísticas generales
 router.get('/dashboard', auth, esAdmin, async (req, res) => {
@@ -222,7 +222,8 @@ router.post('/aprobar-pago/:compraId', auth, esAdmin, async (req, res) => {
 
     await usuario.save();
 
-    await enviarEmailAprobacion(usuario, compra.cursos.map(c => c.curso), compra);
+    // ✅ CORREGIDO: Usar enviarEmailCompraAprobada en vez de enviarEmailAprobacion
+    await enviarEmailCompraAprobada(usuario, compra.cursos.map(c => c.curso), compra);
 
     res.json({
       mensaje: 'Pago aprobado y email enviado al usuario',
