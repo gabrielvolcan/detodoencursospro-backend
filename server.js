@@ -5,13 +5,25 @@ const cors = require('cors');
 
 const app = express();
 
-// Middleware CORS - CORREGIDO PARA MÚLTIPLES ORÍGENES
+// Middleware CORS - ACEPTA TODAS LAS URLs DE VERCEL
 app.use(cors({
-  origin: [
-    'http://localhost:5173',
-    'https://frontend-frk1yvp86-gabriel-volcans-projects.vercel.app',
-    'https://www.detodoencursos.com'
-  ],
+  origin: function(origin, callback) {
+    // Permitir sin origin (mobile apps, Postman, etc)
+    if (!origin) return callback(null, true);
+    
+    // Lista de orígenes permitidos
+    const allowedOrigins = [
+      'http://localhost:5173',
+      'https://www.detodoencursos.com'
+    ];
+    
+    // Permitir todas las URLs de Vercel (*.vercel.app)
+    if (origin.includes('.vercel.app') || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    
+    callback(new Error('Not allowed by CORS'));
+  },
   credentials: true
 }));
 
