@@ -281,4 +281,51 @@ function calcularPorcentaje(curso, videosVistos) {
   return Math.round((videosVistos.length / total) * 100);
 }
 
+// ========================================
+// 🎓 OBTENER CERTIFICADO
+// ========================================
+router.get('/:id/certificado', auth, async (req, res) => {
+  try {
+    const usuario = await Usuario.findById(req.usuario._id);
+    const curso = await Curso.findById(req.params.id);
+
+    if (!curso) {
+      return res.status(404).json({ error: 'Curso no encontrado' });
+    }
+
+    // Buscar el curso en cursosComprados del usuario
+    const cursoComprado = usuario.cursosComprados.find(
+      c => c.curso.toString() === curso._id.toString()
+    );
+
+    if (!cursoComprado) {
+      return res.status(403).json({ error: 'No tienes acceso a este curso' });
+    }
+
+    if (!cursoComprado.completado) {
+      return res.status(400).json({ error: 'Debes completar el curso para obtener el certificado' });
+    }
+
+    // Generar código de certificado si no existe
+    if (!cursoComprado.certificado.codigoCertificado) {
+      const codigoUnico = `DTC-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+      cursoComprado.certificado.codigoCertificado = codigoUnico;
+      cursoComprado.certificado.generado = true;
+      cursoComprado.certificado.fechaGeneracion = new Date();
+      await usuario.save();
+    }
+
+    res.json({
+      nombreEstudiante: usuario.nombre,
+      nombreCurso: curso.titulo,
+      fechaCompletado: cursoComprado.fechaCompletado,
+      codigoCertificado: cursoComprado.certificado.codigoCertificado,
+      duracionCurso: curso.duracion,
+      categoria: curso.categoria
+    });
+  } catch (error) {
+    console.error('Error obteniendo certificado:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
 module.exports = router;
