@@ -1,10 +1,10 @@
 const nodemailer = require('nodemailer');
 
-// Configurar transporter de nodemailer
+// Configurar transporter de nodemailer para HOSTINGER
 const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST || 'smtp.gmail.com',
-  port: process.env.EMAIL_PORT || 587,
-  secure: false,
+  host: process.env.EMAIL_HOST || 'smtp.hostinger.com',
+  port: process.env.EMAIL_PORT || 465,
+  secure: true, // true para puerto 465
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASSWORD
@@ -18,9 +18,9 @@ const enviarEmailVerificacion = async (email, nombre, token) => {
   const urlVerificacion = `${process.env.FRONTEND_URL}/verificar-email/${token}`;
 
   const mailOptions = {
-    from: `"Detodo en Cursos Pro" <${process.env.EMAIL_USER}>`,
+    from: `"Detodo en Cursos" <${process.env.EMAIL_USER}>`,
     to: email,
-    subject: '✅ Verifica tu cuenta - Detodo en Cursos Pro',
+    subject: '✅ Verifica tu cuenta - Detodo en Cursos',
     html: `
       <!DOCTYPE html>
       <html>
@@ -67,7 +67,7 @@ const enviarEmailVerificacion = async (email, nombre, token) => {
       </head>
       <body>
         <div class="header">
-          <h1>¡Bienvenido a Detodo en Cursos Pro! 🎉</h1>
+          <h1>¡Bienvenido a Detodo en Cursos! 🎉</h1>
         </div>
         <div class="content">
           <h2>Hola ${nombre},</h2>
@@ -85,14 +85,21 @@ const enviarEmailVerificacion = async (email, nombre, token) => {
           <p>Si no creaste esta cuenta, ignora este email.</p>
         </div>
         <div class="footer">
-          <p>© 2025 Detodo en Cursos Pro. Todos los derechos reservados.</p>
+          <p>© 2025 Detodo en Cursos. Todos los derechos reservados.</p>
+          <p>www.detodoencursos.com</p>
         </div>
       </body>
       </html>
     `
   };
 
-  await transporter.sendMail(mailOptions);
+  try {
+    await transporter.sendMail(mailOptions);
+    console.log('✅ Email de verificación enviado a:', email);
+  } catch (error) {
+    console.error('❌ Error enviando email de verificación:', error);
+    throw error;
+  }
 };
 
 // ========================================
@@ -102,9 +109,9 @@ const enviarEmailRecuperacion = async (email, nombre, token) => {
   const urlRecuperacion = `${process.env.FRONTEND_URL}/restablecer-contraseña/${token}`;
 
   const mailOptions = {
-    from: `"Detodo en Cursos Pro" <${process.env.EMAIL_USER}>`,
+    from: `"Detodo en Cursos" <${process.env.EMAIL_USER}>`,
     to: email,
-    subject: '🔑 Recupera tu contraseña - Detodo en Cursos Pro',
+    subject: '🔑 Recupera tu contraseña - Detodo en Cursos',
     html: `
       <!DOCTYPE html>
       <html>
@@ -182,14 +189,21 @@ const enviarEmailRecuperacion = async (email, nombre, token) => {
           <p>Por tu seguridad, te recomendamos usar una contraseña fuerte que incluya mayúsculas, números y caracteres especiales.</p>
         </div>
         <div class="footer">
-          <p>© 2025 Detodo en Cursos Pro. Todos los derechos reservados.</p>
+          <p>© 2025 Detodo en Cursos. Todos los derechos reservados.</p>
+          <p>www.detodoencursos.com</p>
         </div>
       </body>
       </html>
     `
   };
 
-  await transporter.sendMail(mailOptions);
+  try {
+    await transporter.sendMail(mailOptions);
+    console.log('✅ Email de recuperación enviado a:', email);
+  } catch (error) {
+    console.error('❌ Error enviando email de recuperación:', error);
+    throw error;
+  }
 };
 
 // ========================================
@@ -199,9 +213,9 @@ const enviarEmailCompraAprobada = async (usuario, cursos, compra) => {
   const listaCursos = cursos.map(curso => `<li>${curso.titulo}</li>`).join('');
 
   const mailOptions = {
-    from: `"Detodo en Cursos Pro" <${process.env.EMAIL_USER}>`,
+    from: `"Detodo en Cursos" <${process.env.EMAIL_USER}>`,
     to: usuario.email,
-    subject: '✅ Tu compra ha sido aprobada - Detodo en Cursos Pro',
+    subject: '✅ Tu compra ha sido aprobada - Detodo en Cursos',
     html: `
       <!DOCTYPE html>
       <html>
@@ -271,7 +285,8 @@ const enviarEmailCompraAprobada = async (usuario, cursos, compra) => {
           <p>¡Comienza tu aprendizaje ahora mismo y alcanza tus metas! 🚀</p>
         </div>
         <div class="footer">
-          <p>© 2025 Detodo en Cursos Pro. Todos los derechos reservados.</p>
+          <p>© 2025 Detodo en Cursos. Todos los derechos reservados.</p>
+          <p>www.detodoencursos.com</p>
         </div>
       </body>
       </html>
@@ -280,8 +295,9 @@ const enviarEmailCompraAprobada = async (usuario, cursos, compra) => {
 
   try {
     await transporter.sendMail(mailOptions);
+    console.log('✅ Email de compra aprobada enviado a:', usuario.email);
   } catch (error) {
-    console.error('Error enviando email de aprobación:', error);
+    console.error('❌ Error enviando email de compra aprobada:', error);
     // No lanzar error para no bloquear la aprobación
   }
 };
@@ -291,9 +307,9 @@ const enviarEmailCompraAprobada = async (usuario, cursos, compra) => {
 // ========================================
 const enviarEmailRechazo = async (usuario, motivo) => {
   const mailOptions = {
-    from: `"Detodo en Cursos Pro" <${process.env.EMAIL_USER}>`,
+    from: `"Detodo en Cursos" <${process.env.EMAIL_USER}>`,
     to: usuario.email,
-    subject: '❌ Tu compra requiere revisión - Detodo en Cursos Pro',
+    subject: '❌ Tu compra requiere revisión - Detodo en Cursos',
     html: `
       <!DOCTYPE html>
       <html>
@@ -370,7 +386,8 @@ const enviarEmailRechazo = async (usuario, motivo) => {
           </div>
         </div>
         <div class="footer">
-          <p>© 2025 Detodo en Cursos Pro. Todos los derechos reservados.</p>
+          <p>© 2025 Detodo en Cursos. Todos los derechos reservados.</p>
+          <p>www.detodoencursos.com</p>
         </div>
       </body>
       </html>
@@ -379,8 +396,9 @@ const enviarEmailRechazo = async (usuario, motivo) => {
 
   try {
     await transporter.sendMail(mailOptions);
+    console.log('✅ Email de rechazo enviado a:', usuario.email);
   } catch (error) {
-    console.error('Error enviando email de rechazo:', error);
+    console.error('❌ Error enviando email de rechazo:', error);
     // No lanzar error
   }
 };
