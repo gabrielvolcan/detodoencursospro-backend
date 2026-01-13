@@ -7,7 +7,7 @@ const { auth } = require('../middleware/auth');
 const { enviarEmailVerificacion, enviarEmailRecuperacion } = require('../services/emailService');
 
 // ========================================
-// 📝 REGISTRO CON EMAIL DE VERIFICACIÓN (OPTIMIZADO ⚡)
+// 📝 REGISTRO CON EMAIL DE VERIFICACIÓN (SIN TOKEN INMEDIATO)
 // ========================================
 router.post('/registro', async (req, res) => {
   try {
@@ -52,25 +52,13 @@ router.post('/registro', async (req, res) => {
 
     await usuario.save();
 
-    // Generar token JWT
-    const token = jwt.sign({ id: usuario._id }, process.env.JWT_SECRET, {
-      expiresIn: '30d'
-    });
-
-    // ✅ RESPONDER INMEDIATAMENTE (SIN ESPERAR EMAIL)
+    // ✅ RESPONDER SIN TOKEN (usuario debe verificar primero)
     res.status(201).json({
-      usuario: {
-        id: usuario._id,
-        nombre: usuario.nombre,
-        email: usuario.email,
-        rol: usuario.rol,
-        emailVerificado: usuario.emailVerificado
-      },
-      token,
-      mensaje: 'Registro exitoso. Por favor verifica tu email.'
+      mensaje: 'Registro exitoso. Revisa tu email para verificar tu cuenta.',
+      emailEnviado: true
     });
 
-    // 📧 ENVIAR EMAIL EN BACKGROUND (NO BLOQUEA)
+    // 📧 ENVIAR EMAIL EN BACKGROUND
     enviarEmailVerificacion(email, nombre, tokenVerificacion).catch(err => 
       console.error('❌ Error enviando email de verificación:', err)
     );
@@ -106,7 +94,7 @@ router.get('/verificar-email/:token', async (req, res) => {
 });
 
 // ========================================
-// 🔐 LOGIN
+// 🔐 LOGIN (REQUIERE EMAIL VERIFICADO)
 // ========================================
 router.post('/login', async (req, res) => {
   try {
@@ -122,6 +110,14 @@ router.post('/login', async (req, res) => {
     const passwordValido = await usuario.compararPassword(password);
     if (!passwordValido) {
       return res.status(401).json({ error: 'Credenciales inválidas' });
+    }
+
+    // ✅ VERIFICAR QUE EL EMAIL ESTÉ VERIFICADO
+    if (!usuario.emailVerificado) {
+      return res.status(403).json({ 
+        error: 'Debes verificar tu email antes de iniciar sesión. Revisa tu bandeja de entrada.',
+        emailVerificado: false
+      });
     }
 
     // Generar token
@@ -145,7 +141,7 @@ router.post('/login', async (req, res) => {
 });
 
 // ========================================
-// 🔑 SOLICITAR RECUPERACIÓN DE CONTRASEÑA (OPTIMIZADO ⚡)
+// 🔑 SOLICITAR RECUPERACIÓN DE CONTRASEÑA (OPTIMIZADO)
 // ========================================
 router.post('/recuperar-contraseña', async (req, res) => {
   try {
