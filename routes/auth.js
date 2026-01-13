@@ -7,7 +7,7 @@ const { auth } = require('../middleware/auth');
 const { enviarEmailVerificacion, enviarEmailRecuperacion } = require('../services/emailService');
 
 // ========================================
-// 📝 REGISTRO CON EMAIL DE VERIFICACIÓN
+// 📝 REGISTRO CON EMAIL DE VERIFICACIÓN (OPTIMIZADO ⚡)
 // ========================================
 router.post('/registro', async (req, res) => {
   try {
@@ -52,19 +52,12 @@ router.post('/registro', async (req, res) => {
 
     await usuario.save();
 
-    // Enviar email de verificación
-    try {
-      await enviarEmailVerificacion(email, nombre, tokenVerificacion);
-    } catch (emailError) {
-      console.error('Error enviando email de verificación:', emailError);
-      // No fallar el registro si el email falla
-    }
-
     // Generar token JWT
     const token = jwt.sign({ id: usuario._id }, process.env.JWT_SECRET, {
       expiresIn: '30d'
     });
 
+    // ✅ RESPONDER INMEDIATAMENTE (SIN ESPERAR EMAIL)
     res.status(201).json({
       usuario: {
         id: usuario._id,
@@ -76,6 +69,12 @@ router.post('/registro', async (req, res) => {
       token,
       mensaje: 'Registro exitoso. Por favor verifica tu email.'
     });
+
+    // 📧 ENVIAR EMAIL EN BACKGROUND (NO BLOQUEA)
+    enviarEmailVerificacion(email, nombre, tokenVerificacion).catch(err => 
+      console.error('❌ Error enviando email de verificación:', err)
+    );
+
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
@@ -146,7 +145,7 @@ router.post('/login', async (req, res) => {
 });
 
 // ========================================
-// 🔑 SOLICITAR RECUPERACIÓN DE CONTRASEÑA
+// 🔑 SOLICITAR RECUPERACIÓN DE CONTRASEÑA (OPTIMIZADO ⚡)
 // ========================================
 router.post('/recuperar-contraseña', async (req, res) => {
   try {
@@ -165,15 +164,14 @@ router.post('/recuperar-contraseña', async (req, res) => {
 
     await usuario.save();
 
-    // Enviar email
-    try {
-      await enviarEmailRecuperacion(email, usuario.nombre, tokenRecuperacion);
-    } catch (emailError) {
-      console.error('Error enviando email de recuperación:', emailError);
-      return res.status(500).json({ error: 'Error al enviar el email. Intenta de nuevo más tarde.' });
-    }
-
+    // ✅ RESPONDER INMEDIATAMENTE
     res.json({ mensaje: 'Si el email existe, recibirás instrucciones para recuperar tu contraseña.' });
+
+    // 📧 ENVIAR EMAIL EN BACKGROUND
+    enviarEmailRecuperacion(email, usuario.nombre, tokenRecuperacion).catch(err => 
+      console.error('❌ Error enviando email de recuperación:', err)
+    );
+
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
