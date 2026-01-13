@@ -3,8 +3,8 @@ const nodemailer = require('nodemailer');
 // Configurar transporter de nodemailer para HOSTINGER
 const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST || 'smtp.hostinger.com',
-  port: process.env.EMAIL_PORT || 465,
-  secure: true, // true para puerto 465
+  port: process.env.EMAIL_PORT || 587,
+  secure: true, // true para puerto 587
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASSWORD
