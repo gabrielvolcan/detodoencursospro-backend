@@ -92,10 +92,10 @@ const enviarEmailVerificacion = async (email, nombre, token) => {
 };
 
 // ========================================
-// 🔑 EMAIL DE RECUPERACIÓN DE CONTRASEÑA
+// 🔑 EMAIL DE RECUPERACIÓN DE CONTRASEÑA (URL SIN Ñ)
 // ========================================
 const enviarEmailRecuperacion = async (email, nombre, token) => {
-  const urlRecuperacion = `${process.env.FRONTEND_URL}/restablecer-contraseña/${token}`;
+  const urlRecuperacion = `${process.env.FRONTEND_URL}/restablecer-contrasena/${token}`;
 
   try {
     await resend.emails.send({

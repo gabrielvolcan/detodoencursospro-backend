@@ -141,9 +141,9 @@ router.post('/login', async (req, res) => {
 });
 
 // ========================================
-// 🔑 SOLICITAR RECUPERACIÓN DE CONTRASEÑA (OPTIMIZADO)
+// 🔑 SOLICITAR RECUPERACIÓN DE CONTRASEÑA (SIN Ñ)
 // ========================================
-router.post('/recuperar-contraseña', async (req, res) => {
+router.post('/recuperar-contrasena', async (req, res) => {
   try {
     const { email } = req.body;
 
@@ -174,9 +174,9 @@ router.post('/recuperar-contraseña', async (req, res) => {
 });
 
 // ========================================
-// 🔓 RESTABLECER CONTRASEÑA
+// 🔓 RESTABLECER CONTRASEÑA (SIN Ñ)
 // ========================================
-router.post('/restablecer-contraseña/:token', async (req, res) => {
+router.post('/restablecer-contrasena/:token', async (req, res) => {
   try {
     const { password } = req.body;
 
