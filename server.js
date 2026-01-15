@@ -4,6 +4,7 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 
 const app = express();
+const emailMasivoRoutes = require('./routes/emailMasivo');
 
 // Middleware CORS - ACEPTA TODAS LAS URLs DE VERCEL
 app.use(cors({
@@ -47,6 +48,8 @@ app.use('/api/cursos', require('./routes/cursos'));
 app.use('/api/pagos', require('./routes/pagos'));
 app.use('/api/pagos-manual', require('./routes/pagosManual'));
 app.use('/api/admin', require('./routes/admin'));
+app.use('/api/email-masivo', emailMasivoRoutes);
+
 
 // Ruta de prueba
 app.get('/api/health', (req, res) => {
