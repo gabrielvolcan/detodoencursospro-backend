@@ -38,21 +38,6 @@ router.get('/', async (req, res) => {
   }
 });
 
-// Obtener un curso por ID (público)
-router.get('/:id', async (req, res) => {
-  try {
-    const curso = await Curso.findById(req.params.id);
-    
-    if (!curso || !curso.activo) {
-      return res.status(404).json({ error: 'Curso no encontrado' });
-    }
-    
-    res.json(curso);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
 // Obtener categorías únicas
 router.get('/meta/categorias', async (req, res) => {
   try {
@@ -70,6 +55,78 @@ router.get('/meta/niveles', async (req, res) => {
     res.json(niveles);
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// ========================================
+// 🆕 VERIFICAR CERTIFICADO (PÚBLICO - PARA QR CODE) ✅
+// ========================================
+router.get('/verificar-certificado/:codigo', async (req, res) => {
+  try {
+    const { codigo } = req.params;
+    
+    console.log('🔍 Buscando certificado con código:', codigo);
+    
+    // Buscar usuario que tenga ese código de certificado
+    const usuario = await Usuario.findOne({
+      'cursosComprados': {
+        $elemMatch: {
+          'certificado.codigoCertificado': codigo,
+          'completado': true
+        }
+      }
+    }).select('nombre cursosComprados');
+    
+    console.log('👤 Usuario encontrado:', usuario ? usuario.nombre : 'NO');
+    
+    if (!usuario) {
+      console.log('❌ No se encontró usuario con ese certificado');
+      return res.status(404).json({ error: 'Certificado no encontrado' });
+    }
+    
+    // Encontrar el curso específico con ese código
+    const cursoComprado = usuario.cursosComprados.find(
+      c => c.certificado && 
+           c.certificado.codigoCertificado === codigo &&
+           c.completado === true
+    );
+    
+    console.log('📜 Curso comprado:', cursoComprado ? 'ENCONTRADO' : 'NO ENCONTRADO');
+    
+    if (!cursoComprado) {
+      console.log('❌ No se encontró el curso en cursosComprados');
+      return res.status(404).json({ error: 'Certificado no válido' });
+    }
+    
+    // Obtener información del curso
+    const curso = await Curso.findById(cursoComprado.curso).select('titulo categoria duracion');
+    
+    console.log('🎓 Curso:', curso ? curso.titulo : 'NO ENCONTRADO');
+    
+    if (!curso) {
+      console.log('❌ No se encontró el curso en la colección Cursos');
+      return res.status(404).json({ error: 'Curso asociado no encontrado' });
+    }
+    
+    // Respuesta exitosa con datos del certificado
+    const response = {
+      nombreEstudiante: usuario.nombre || 'Estudiante',
+      nombreCurso: curso.titulo,
+      fechaCompletado: cursoComprado.fechaCompletado,
+      codigoCertificado: codigo,
+      categoria: curso.categoria || 'General',
+      fechaGeneracion: cursoComprado.certificado.fechaGeneracion || cursoComprado.fechaCompletado
+    };
+    
+    console.log('✅ Certificado verificado exitosamente');
+    
+    res.json(response);
+  } catch (error) {
+    console.error('❌ Error verificando certificado:', error);
+    res.status(500).json({ 
+      error: 'Error al verificar el certificado',
+      detalle: error.message 
+    });
   }
 });
 
@@ -277,6 +334,21 @@ router.get('/:id/certificado', auth, async (req, res) => {
       error: 'Error al generar el certificado',
       detalle: error.message 
     });
+  }
+});
+
+// Obtener un curso por ID (público) - DEBE IR DESPUÉS DE RUTAS ESPECÍFICAS
+router.get('/:id', async (req, res) => {
+  try {
+    const curso = await Curso.findById(req.params.id);
+    
+    if (!curso || !curso.activo) {
+      return res.status(404).json({ error: 'Curso no encontrado' });
+    }
+    
+    res.json(curso);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 
