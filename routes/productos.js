@@ -9,7 +9,7 @@ const multer = require('multer');
 const cloudinary = require('cloudinary').v2;
 const Producto = require('../models/Producto');
 const Usuario = require('../models/Usuario');
-const { authMiddleware, adminMiddleware } = require('../middleware/auth');
+const { auth, esAdmin } = require('../middleware/auth');
 
 // ========================================
 // CONFIGURACIÓN DE CLOUDINARY
@@ -93,7 +93,7 @@ const subirArchivo = async (file) => {
 // 🆕 CREAR PRODUCTO (Admin)
 // ========================================
 
-router.post('/', authMiddleware, adminMiddleware, upload.array('archivos', 10), async (req, res) => {
+router.post('/', auth, esAdmin, upload.array('archivos', 10), async (req, res) => {
   try {
     const datos = JSON.parse(req.body.datos);
     
@@ -202,7 +202,7 @@ router.get('/:id', async (req, res) => {
 // 📥 DESCARGAR ARCHIVO (requiere compra)
 // ========================================
 
-router.get('/:productoId/descargar/:archivoId', authMiddleware, async (req, res) => {
+router.get('/:productoId/descargar/:archivoId', auth, async (req, res) => {
   try {
     const { productoId, archivoId } = req.params;
     const userId = req.user.id;
@@ -292,7 +292,7 @@ router.get('/:productoId/descargar/:archivoId', authMiddleware, async (req, res)
 // ✏️ ACTUALIZAR PRODUCTO (Admin)
 // ========================================
 
-router.put('/:id', authMiddleware, adminMiddleware, async (req, res) => {
+router.put('/:id', auth, esAdmin, async (req, res) => {
   try {
     const producto = await Producto.findByIdAndUpdate(
       req.params.id,
@@ -315,7 +315,7 @@ router.put('/:id', authMiddleware, adminMiddleware, async (req, res) => {
 // 🗑️ ELIMINAR PRODUCTO (Admin)
 // ========================================
 
-router.delete('/:id', authMiddleware, adminMiddleware, async (req, res) => {
+router.delete('/:id', auth, esAdmin, async (req, res) => {
   try {
     const producto = await Producto.findById(req.params.id);
     
