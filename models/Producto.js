@@ -1,72 +1,48 @@
-// ========================================
-// 📦 MODELO GENÉRICO DE PRODUCTO
-// Soporta CURSOS, LIBROS, EBOOKS, PLANTILLAS, ETC.
-// ========================================
-
 const mongoose = require('mongoose');
 
 const productoSchema = new mongoose.Schema({
-  // ========================================
-  // INFORMACIÓN BÁSICA (para todos los productos)
-  // ========================================
+  // Información básica
   titulo: {
     type: String,
-    required: true
+    required: true,
+    trim: true
   },
-  
-  subtitulo: String,
-  
+  subtitulo: {
+    type: String,
+    trim: true
+  },
   descripcion: {
     type: String,
     required: true
   },
+  descripcionLarga: String,
+  tipo: {
+    type: String,
+    required: true,
+    enum: ['curso', 'libro', 'ebook', 'plantilla', 'guia', 'software', 'bundle', 'recurso', 'otro']
+  },
+  categoria: {
+    type: String,
+    required: true,
+    trim: true
+  },
+  tags: [String],
   
-  descripcionLarga: String,  // HTML/Markdown permitido
-  
+  // Imagen
   imagen: {
     type: String,
     required: true
   },
+  imagenes: [String],
   
-  imagenes: [String],  // Galería de imágenes adicionales
-  
-  // ========================================
-  // 🎯 TIPO DE PRODUCTO (clave principal)
-  // ========================================
-  tipo: {
-    type: String,
-    enum: [
-      'curso',           // Curso con videos
-      'libro',           // Libro PDF
-      'ebook',           // Ebook digital
-      'plantilla',       // Plantillas (PSD, Figma, etc)
-      'guia',            // Guías descargables
-      'software',        // Programas/apps
-      'bundle',          // Paquete de productos
-      'recurso',         // Recursos gráficos
-      'otro'             // Otro tipo
-    ],
-    required: true
-  },
-  
-  // ========================================
-  // CATEGORÍA Y TAGS
-  // ========================================
-  categoria: {
-    type: String,
-    required: true
-  },
-  
-  tags: [String],
-  
-  // ========================================
-  // PRECIOS (por país)
-  // ========================================
+  // Precio base en USD
   precioUSD: {
     type: Number,
-    required: true
+    required: true,
+    min: 0
   },
   
+  // Precios calculados automáticamente (NO required)
   precios: {
     internacional: {
       monto: Number,
@@ -94,172 +70,88 @@ const productoSchema = new mongoose.Schema({
     }
   },
   
-  // ========================================
-  // 📹 CONTENIDO PARA CURSOS (solo si tipo='curso')
-  // ========================================
+  // Videos (solo para cursos)
   videos: [{
     titulo: String,
     url: String,
-    duracion: Number,  // en minutos
+    duracion: Number,
     orden: Number,
-    descripcion: String,
-    recursos: [String]  // Links a materiales adicionales
+    descripcion: String
   }],
   
-  duracion: String,  // "12 horas", "3 meses"
-  nivel: {
-    type: String,
-    enum: ['Principiante', 'Intermedio', 'Avanzado', 'Todos']
-  },
-  
-  // ========================================
-  // 📦 ARCHIVOS DESCARGABLES (para libros, ebooks, plantillas, etc)
-  // ========================================
+  // Archivos descargables
   archivos: [{
-    nombre: {
-      type: String,
-      required: true
-    },
+    nombre: String,
     descripcion: String,
-    url: {
-      type: String,
-      required: true  // URL en Cloudinary, S3, etc
-    },
-    cloudinaryId: String,  // Para eliminar después
-    tipo: {
-      type: String,
-      enum: ['pdf', 'epub', 'mobi', 'zip', 'rar', 'psd', 'ai', 'fig', 'xd', 'docx', 'xlsx', 'exe', 'dmg', 'otro']
-    },
-    tamaño: String,      // "5.2 MB"
-    tamañoBytes: Number,
-    extension: String,   // "pdf", "zip"
+    url: String,
+    tipo: String,
+    tamaño: String,
     orden: Number,
-    esVistPrevia: Boolean  // Si es una muestra gratis
+    esVistPrevia: Boolean
   }],
   
-  // ========================================
-  // METADATOS ESPECÍFICOS POR TIPO
-  // ========================================
+  // Metadatos según tipo
   metadatos: {
-    // Para libros/ebooks:
     autor: String,
     paginas: Number,
     isbn: String,
     editorial: String,
     añoPublicacion: Number,
     idioma: String,
-    
-    // Para software:
     version: String,
-    compatibilidad: [String],  // ["Windows", "Mac", "Linux"]
+    compatibilidad: [String],
     requisitos: String,
-    
-    // Para plantillas:
-    software: String,  // "Photoshop", "Figma", etc
+    software: String,
     versionSoftware: String,
     capas: Boolean,
-    
-    // Para cursos:
     instructor: String,
     certificado: Boolean,
-    
-    // General:
-    actualizaciones: Boolean,  // Si incluye actualizaciones gratis
-    soporte: String           // "6 meses", "Ilimitado"
+    actualizaciones: Boolean,
+    soporte: String
   },
   
-  // ========================================
-  // LO QUE INCLUYE (lista de características)
-  // ========================================
+  // Lo que incluye
   incluye: [{
-    icono: String,  // Nombre del icono lucide-react
-    texto: String   // "Acceso de por vida"
+    texto: String,
+    icono: String
   }],
   
-  // ========================================
-  // VISTA PREVIA (muestra gratis)
-  // ========================================
-  vistaPrevia: {
-    activa: Boolean,
-    tipo: String,  // 'video', 'pdf', 'imagenes'
-    url: String,   // URL de la vista previa
-    descripcion: String
-  },
-  
-  // ========================================
-  // ESTADÍSTICAS
-  // ========================================
-  estudiantes: {
-    type: Number,
-    default: 0
-  },
-  
-  descargas: {
-    type: Number,
-    default: 0
-  },
-  
-  valoracion: {
-    promedio: { type: Number, default: 0 },
-    total: { type: Number, default: 0 }
-  },
-  
-  // ========================================
-  // ESTADO Y VISIBILIDAD
-  // ========================================
-  activo: {
-    type: Boolean,
-    default: true
-  },
-  
-  destacado: {
-    type: Boolean,
-    default: false
-  },
-  
-  nuevo: {
-    type: Boolean,
-    default: false
-  },
-  
+  // Oferta
   oferta: {
-    activa: Boolean,
-    porcentajeDescuento: Number,
+    activa: { type: Boolean, default: false },
+    porcentajeDescuento: { type: Number, default: 0 },
     fechaInicio: Date,
     fechaFin: Date
   },
   
-  // ========================================
-  // LÍMITES Y RESTRICCIONES
-  // ========================================
+  // Límites
   limites: {
-    descargasMaximas: Number,      // null = ilimitadas
-    diasAcceso: Number,             // null = permanente
-    dispositivosMaximos: Number     // null = ilimitados
+    descargasMaximas: Number,
+    diasAcceso: Number,
+    dispositivosMaximos: Number
   },
   
-  // ========================================
+  // Valoración y estadísticas
+  valoracion: {
+    promedio: { type: Number, default: 0 },
+    total: { type: Number, default: 0 }
+  },
+  estudiantes: { type: Number, default: 0 },
+  descargas: { type: Number, default: 0 },
+  
+  // Estados
+  activo: { type: Boolean, default: true },
+  destacado: { type: Boolean, default: false },
+  nuevo: { type: Boolean, default: false },
+  
   // SEO
-  // ========================================
-  slug: {
-    type: String,
-    unique: true
-  },
-  
-  metaTitle: String,
-  metaDescription: String,
+  slug: { type: String, unique: true, sparse: true }
   
 }, {
   timestamps: true
 });
 
-// Índices para búsqueda rápida
-productoSchema.index({ tipo: 1, activo: 1 });
-productoSchema.index({ categoria: 1 });
-productoSchema.index({ destacado: 1 });
-productoSchema.index({ slug: 1 });
-
-// Generar slug automáticamente
+// Generar slug antes de guardar
 productoSchema.pre('save', function(next) {
   if (this.isModified('titulo') && !this.slug) {
     this.slug = this.titulo
