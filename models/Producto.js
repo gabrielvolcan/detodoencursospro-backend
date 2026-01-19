@@ -4,44 +4,47 @@ const productoSchema = new mongoose.Schema({
   // Campos obligatorios básicos
   titulo: {
     type: String,
-    required: true,
+    required: [true, 'El título es obligatorio'],
     trim: true
   },
   descripcion: {
     type: String,
-    required: true
+    required: [true, 'La descripción es obligatoria']
   },
   tipo: {
     type: String,
-    required: true
+    required: [true, 'El tipo es obligatorio'],
+    default: 'libro'
   },
   categoria: {
     type: String,
-    required: true
+    required: [true, 'La categoría es obligatoria']
   },
+  
+  // CAMBIO IMPORTANTE: imagen y precioUSD con defaults
   imagen: {
     type: String,
-    required: true
+    default: 'https://via.placeholder.com/400x300?text=Producto'
   },
   precioUSD: {
     type: Number,
-    required: true,
+    default: 0,
     min: 0
   },
   
-  // TODO lo demás es opcional
+  // Todo lo demás opcional con Mixed
   subtitulo: String,
   descripcionLarga: String,
-  tags: [String],
-  imagenes: [String],
+  tags: { type: [String], default: [] },
+  imagenes: { type: [String], default: [] },
   
-  precios: mongoose.Schema.Types.Mixed,
-  metadatos: mongoose.Schema.Types.Mixed,
-  videos: [mongoose.Schema.Types.Mixed],
-  archivos: [mongoose.Schema.Types.Mixed],
-  incluye: [mongoose.Schema.Types.Mixed],
-  oferta: mongoose.Schema.Types.Mixed,
-  limites: mongoose.Schema.Types.Mixed,
+  precios: { type: mongoose.Schema.Types.Mixed, default: {} },
+  metadatos: { type: mongoose.Schema.Types.Mixed, default: {} },
+  videos: { type: [mongoose.Schema.Types.Mixed], default: [] },
+  archivos: { type: [mongoose.Schema.Types.Mixed], default: [] },
+  incluye: { type: [mongoose.Schema.Types.Mixed], default: [] },
+  oferta: { type: mongoose.Schema.Types.Mixed, default: {} },
+  limites: { type: mongoose.Schema.Types.Mixed, default: {} },
   
   valoracion: {
     promedio: { type: Number, default: 0 },
@@ -57,9 +60,10 @@ const productoSchema = new mongoose.Schema({
   
 }, {
   timestamps: true,
-  strict: false
+  strict: false  // Permite campos extra sin error
 });
 
+// Auto-generar slug
 productoSchema.pre('save', function(next) {
   if (this.isModified('titulo') && !this.slug) {
     this.slug = this.titulo
