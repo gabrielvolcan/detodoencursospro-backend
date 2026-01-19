@@ -53,19 +53,30 @@ router.get('/:id', async (req, res) => {
 });
 
 // ========================================
-// 🆕 CREAR PRODUCTO (Admin) - SIMPLIFICADO
+// 🆕 CREAR PRODUCTO - SIN MIDDLEWARES (TEST)
 // ========================================
-router.post('/', auth, esAdmin, async (req, res) => {
+router.post('/', async (req, res) => {
   try {
-    console.log('📦 Datos recibidos del frontend:', req.body);
+    console.log('📦 req.body completo:', req.body);
+    console.log('📦 req.headers:', req.headers);
     
     // Extraer SOLO los 6 campos básicos
     const { titulo, descripcion, tipo, categoria, imagen, precioUSD } = req.body;
     
+    console.log('✂️ Campos extraídos:', { titulo, descripcion, tipo, categoria, imagen, precioUSD });
+    
     // Validación
     if (!titulo || !descripcion || !tipo || !categoria) {
+      console.log('❌ Validación fallida:', {
+        titulo: !titulo,
+        descripcion: !descripcion,
+        tipo: !tipo,
+        categoria: !categoria
+      });
+      
       return res.status(400).json({ 
         mensaje: 'Faltan campos obligatorios',
+        recibido: req.body,
         faltantes: {
           titulo: !titulo,
           descripcion: !descripcion,
@@ -88,7 +99,7 @@ router.post('/', auth, esAdmin, async (req, res) => {
     
     await productoNuevo.save();
     
-    console.log('✅ Producto creado:', productoNuevo);
+    console.log('✅ Producto creado exitosamente:', productoNuevo._id);
     
     res.status(201).json({
       mensaje: 'Producto creado exitosamente',
