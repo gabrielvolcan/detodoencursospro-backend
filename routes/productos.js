@@ -41,7 +41,7 @@ router.get('/:id', async (req, res) => {
   try {
     const producto = await Producto.findById(req.params.id);
     
-    if (!producto || !producto.activo) {
+    if (!producto) {
       return res.status(404).json({ mensaje: 'Producto no encontrado' });
     }
     
@@ -53,46 +53,53 @@ router.get('/:id', async (req, res) => {
 });
 
 // ========================================
-// 🆕 CREAR PRODUCTO (Admin) - CORREGIDO
+// 🆕 CREAR PRODUCTO (Admin) - SIMPLIFICADO
 // ========================================
 router.post('/', auth, esAdmin, async (req, res) => {
   try {
-    console.log('📦 Datos recibidos:', JSON.stringify(req.body, null, 2));
+    console.log('📦 Datos recibidos del frontend:', req.body);
     
-    // SANITIZAR: eliminar campos vacíos y asegurar valores mínimos
-    const datosLimpios = {
-      ...req.body,
-      titulo: req.body.titulo?.trim() || 'Sin título',
-      descripcion: req.body.descripcion?.trim() || 'Sin descripción',
-      categoria: req.body.categoria?.trim() || 'General',
-      tipo: req.body.tipo || 'libro',
-      imagen: req.body.imagen?.trim() || 'https://via.placeholder.com/400x300?text=Producto',
-      precioUSD: parseFloat(req.body.precioUSD) || 0,
-      tags: Array.isArray(req.body.tags) ? req.body.tags : [],
-      incluye: Array.isArray(req.body.incluye) ? req.body.incluye : [],
-      activo: req.body.activo !== undefined ? req.body.activo : true,
-      destacado: req.body.destacado || false,
-      nuevo: req.body.nuevo || false
-    };
+    // Extraer SOLO los 6 campos básicos
+    const { titulo, descripcion, tipo, categoria, imagen, precioUSD } = req.body;
     
-    console.log('✅ Datos limpios:', JSON.stringify(datosLimpios, null, 2));
+    // Validación
+    if (!titulo || !descripcion || !tipo || !categoria) {
+      return res.status(400).json({ 
+        mensaje: 'Faltan campos obligatorios',
+        faltantes: {
+          titulo: !titulo,
+          descripcion: !descripcion,
+          tipo: !tipo,
+          categoria: !categoria
+        }
+      });
+    }
     
-    const producto = new Producto(datosLimpios);
-    await producto.save();
+    // Crear producto con valores limpios
+    const productoNuevo = new Producto({
+      titulo: titulo.trim(),
+      descripcion: descripcion.trim(),
+      tipo: tipo,
+      categoria: categoria.trim(),
+      imagen: imagen?.trim() || 'https://via.placeholder.com/400x300?text=Producto',
+      precioUSD: parseFloat(precioUSD) || 0,
+      activo: true
+    });
+    
+    await productoNuevo.save();
+    
+    console.log('✅ Producto creado:', productoNuevo);
     
     res.status(201).json({
       mensaje: 'Producto creado exitosamente',
-      producto
+      producto: productoNuevo
     });
+    
   } catch (error) {
     console.error('❌ Error creando producto:', error);
     res.status(500).json({ 
       mensaje: 'Error al crear producto',
-      error: error.message,
-      detalles: error.errors ? Object.keys(error.errors).map(key => ({
-        campo: key,
-        mensaje: error.errors[key].message
-      })) : null
+      error: error.message
     });
   }
 });
@@ -102,9 +109,21 @@ router.post('/', auth, esAdmin, async (req, res) => {
 // ========================================
 router.put('/:id', auth, esAdmin, async (req, res) => {
   try {
+    const { titulo, descripcion, tipo, categoria, imagen, precioUSD } = req.body;
+    
+    // Actualizar solo los campos permitidos
+    const datosActualizados = {
+      titulo: titulo?.trim(),
+      descripcion: descripcion?.trim(),
+      tipo,
+      categoria: categoria?.trim(),
+      imagen: imagen?.trim() || 'https://via.placeholder.com/400x300?text=Producto',
+      precioUSD: parseFloat(precioUSD) || 0
+    };
+    
     const producto = await Producto.findByIdAndUpdate(
       req.params.id,
-      req.body,
+      datosActualizados,
       { new: true, runValidators: true }
     );
     
@@ -118,7 +137,10 @@ router.put('/:id', auth, esAdmin, async (req, res) => {
     });
   } catch (error) {
     console.error('Error actualizando producto:', error);
-    res.status(500).json({ mensaje: 'Error al actualizar producto' });
+    res.status(500).json({ 
+      mensaje: 'Error al actualizar producto',
+      error: error.message
+    });
   }
 });
 
