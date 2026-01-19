@@ -53,11 +53,31 @@ router.get('/:id', async (req, res) => {
 });
 
 // ========================================
-// 🆕 CREAR PRODUCTO (Admin)
+// 🆕 CREAR PRODUCTO (Admin) - CORREGIDO
 // ========================================
 router.post('/', auth, esAdmin, async (req, res) => {
   try {
-    const producto = new Producto(req.body);
+    console.log('📦 Datos recibidos:', JSON.stringify(req.body, null, 2));
+    
+    // SANITIZAR: eliminar campos vacíos y asegurar valores mínimos
+    const datosLimpios = {
+      ...req.body,
+      titulo: req.body.titulo?.trim() || 'Sin título',
+      descripcion: req.body.descripcion?.trim() || 'Sin descripción',
+      categoria: req.body.categoria?.trim() || 'General',
+      tipo: req.body.tipo || 'libro',
+      imagen: req.body.imagen?.trim() || 'https://via.placeholder.com/400x300?text=Producto',
+      precioUSD: parseFloat(req.body.precioUSD) || 0,
+      tags: Array.isArray(req.body.tags) ? req.body.tags : [],
+      incluye: Array.isArray(req.body.incluye) ? req.body.incluye : [],
+      activo: req.body.activo !== undefined ? req.body.activo : true,
+      destacado: req.body.destacado || false,
+      nuevo: req.body.nuevo || false
+    };
+    
+    console.log('✅ Datos limpios:', JSON.stringify(datosLimpios, null, 2));
+    
+    const producto = new Producto(datosLimpios);
     await producto.save();
     
     res.status(201).json({
@@ -65,10 +85,14 @@ router.post('/', auth, esAdmin, async (req, res) => {
       producto
     });
   } catch (error) {
-    console.error('Error creando producto:', error);
+    console.error('❌ Error creando producto:', error);
     res.status(500).json({ 
       mensaje: 'Error al crear producto',
-      error: error.message 
+      error: error.message,
+      detalles: error.errors ? Object.keys(error.errors).map(key => ({
+        campo: key,
+        mensaje: error.errors[key].message
+      })) : null
     });
   }
 });
