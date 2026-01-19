@@ -35,43 +35,24 @@ const productoSchema = new mongoose.Schema({
   tags: [String],
   imagenes: [String],
   
-  // Precios por país
   precios: mongoose.Schema.Types.Mixed,
-  
-  // Metadatos
   metadatos: mongoose.Schema.Types.Mixed,
-  
-  // Videos
   videos: [mongoose.Schema.Types.Mixed],
-  
-  // Archivos
   archivos: [mongoose.Schema.Types.Mixed],
-  
-  // Incluye
   incluye: [mongoose.Schema.Types.Mixed],
-  
-  // Oferta
   oferta: mongoose.Schema.Types.Mixed,
-  
-  // Límites
   limites: mongoose.Schema.Types.Mixed,
   
-  // Valoración
   valoracion: {
     promedio: { type: Number, default: 0 },
     total: { type: Number, default: 0 }
   },
   
-  // Estadísticas
   estudiantes: { type: Number, default: 0 },
   descargas: { type: Number, default: 0 },
-  
-  // Estados
   activo: { type: Boolean, default: true },
   destacado: { type: Boolean, default: false },
   nuevo: { type: Boolean, default: false },
-  
-  // SEO
   slug: String
   
 }, {
@@ -79,7 +60,6 @@ const productoSchema = new mongoose.Schema({
   strict: false
 });
 
-// Generar slug
 productoSchema.pre('save', function(next) {
   if (this.isModified('titulo') && !this.slug) {
     this.slug = this.titulo
