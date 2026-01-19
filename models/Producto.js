@@ -1,141 +1,68 @@
 const mongoose = require('mongoose');
 
 const productoSchema = new mongoose.Schema({
-  // Información básica
+  // Campos obligatorios básicos
   titulo: {
     type: String,
     required: true,
-    trim: true
-  },
-  subtitulo: {
-    type: String,
     trim: true
   },
   descripcion: {
     type: String,
     required: true
   },
-  descripcionLarga: String,
   tipo: {
     type: String,
-    required: true,
-    enum: ['curso', 'libro', 'ebook', 'plantilla', 'guia', 'software', 'bundle', 'recurso', 'otro']
+    required: true
   },
   categoria: {
     type: String,
-    required: true,
-    trim: true
+    required: true
   },
-  tags: [String],
-  
-  // Imagen
   imagen: {
     type: String,
     required: true
   },
-  imagenes: [String],
-  
-  // Precio base en USD
   precioUSD: {
     type: Number,
     required: true,
     min: 0
   },
   
-  // Precios calculados automáticamente (NO required)
-  precios: {
-    internacional: {
-      monto: Number,
-      moneda: { type: String, default: 'USD' }
-    },
-    peru: {
-      monto: Number,
-      moneda: { type: String, default: 'PEN' }
-    },
-    chile: {
-      monto: Number,
-      moneda: { type: String, default: 'CLP' }
-    },
-    argentina: {
-      monto: Number,
-      moneda: { type: String, default: 'ARS' }
-    },
-    uruguay: {
-      monto: Number,
-      moneda: { type: String, default: 'UYU' }
-    },
-    venezuela: {
-      monto: Number,
-      moneda: { type: String, default: 'VES' }
-    }
-  },
+  // TODO lo demás es opcional
+  subtitulo: String,
+  descripcionLarga: String,
+  tags: [String],
+  imagenes: [String],
   
-  // Videos (solo para cursos)
-  videos: [{
-    titulo: String,
-    url: String,
-    duracion: Number,
-    orden: Number,
-    descripcion: String
-  }],
+  // Precios por país
+  precios: mongoose.Schema.Types.Mixed,
   
-  // Archivos descargables
-  archivos: [{
-    nombre: String,
-    descripcion: String,
-    url: String,
-    tipo: String,
-    tamaño: String,
-    orden: Number,
-    esVistPrevia: Boolean
-  }],
+  // Metadatos
+  metadatos: mongoose.Schema.Types.Mixed,
   
-  // Metadatos según tipo
-  metadatos: {
-    autor: String,
-    paginas: Number,
-    isbn: String,
-    editorial: String,
-    añoPublicacion: Number,
-    idioma: String,
-    version: String,
-    compatibilidad: [String],
-    requisitos: String,
-    software: String,
-    versionSoftware: String,
-    capas: Boolean,
-    instructor: String,
-    certificado: Boolean,
-    actualizaciones: Boolean,
-    soporte: String
-  },
+  // Videos
+  videos: [mongoose.Schema.Types.Mixed],
   
-  // Lo que incluye
-  incluye: [{
-    texto: String,
-    icono: String
-  }],
+  // Archivos
+  archivos: [mongoose.Schema.Types.Mixed],
+  
+  // Incluye
+  incluye: [mongoose.Schema.Types.Mixed],
   
   // Oferta
-  oferta: {
-    activa: { type: Boolean, default: false },
-    porcentajeDescuento: { type: Number, default: 0 },
-    fechaInicio: Date,
-    fechaFin: Date
-  },
+  oferta: mongoose.Schema.Types.Mixed,
   
   // Límites
-  limites: {
-    descargasMaximas: Number,
-    diasAcceso: Number,
-    dispositivosMaximos: Number
-  },
+  limites: mongoose.Schema.Types.Mixed,
   
-  // Valoración y estadísticas
+  // Valoración
   valoracion: {
     promedio: { type: Number, default: 0 },
     total: { type: Number, default: 0 }
   },
+  
+  // Estadísticas
   estudiantes: { type: Number, default: 0 },
   descargas: { type: Number, default: 0 },
   
@@ -145,23 +72,20 @@ const productoSchema = new mongoose.Schema({
   nuevo: { type: Boolean, default: false },
   
   // SEO
-  slug: { type: String, unique: true, sparse: true }
+  slug: String
   
 }, {
-  timestamps: true
+  timestamps: true,
+  strict: false
 });
 
-// Generar slug antes de guardar
+// Generar slug
 productoSchema.pre('save', function(next) {
   if (this.isModified('titulo') && !this.slug) {
     this.slug = this.titulo
       .toLowerCase()
-      .replace(/[áàäâ]/g, 'a')
-      .replace(/[éèëê]/g, 'e')
-      .replace(/[íìïî]/g, 'i')
-      .replace(/[óòöô]/g, 'o')
-      .replace(/[úùüû]/g, 'u')
-      .replace(/ñ/g, 'n')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '');
   }
