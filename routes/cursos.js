@@ -59,6 +59,67 @@ router.get('/meta/niveles', async (req, res) => {
 });
 
 // ========================================
+// 🆕 INSCRIPCIÓN GRATUITA (NUEVO ENDPOINT)
+// ========================================
+router.post('/:id/inscripcion-gratuita', auth, async (req, res) => {
+  try {
+    const curso = await Curso.findById(req.params.id);
+
+    // Validación 1: Curso existe
+    if (!curso) {
+      return res.status(404).json({ error: 'Curso no encontrado' });
+    }
+
+    // Validación 2: El curso es realmente gratuito
+    if (!curso.esGratuito) {
+      return res.status(400).json({ error: 'Este curso no es gratuito' });
+    }
+
+    // Validación 3: Usuario no lo tiene ya comprado
+    const usuario = await Usuario.findById(req.usuario._id);
+    const yaInscrito = usuario.cursosComprados.some(
+      c => c.curso.toString() === curso._id.toString()
+    );
+
+    if (yaInscrito) {
+      return res.status(400).json({ error: 'Ya estás inscrito en este curso' });
+    }
+
+    // ✅ INSCRIBIR AL USUARIO GRATUITAMENTE
+    usuario.cursosComprados.push({
+      curso: curso._id,
+      fechaCompra: new Date(),
+      precio: 0,
+      moneda: 'USD',
+      metodoPago: 'Gratuito',
+      estado: 'completado',
+      progresoVideos: [],
+      completado: false
+    });
+
+    await usuario.save();
+
+    // Incrementar contador de estudiantes del curso
+    curso.estudiantes = (curso.estudiantes || 0) + 1;
+    await curso.save();
+
+    res.json({ 
+      mensaje: '🎉 Inscripción exitosa',
+      curso: {
+        id: curso._id,
+        titulo: curso.titulo
+      }
+    });
+  } catch (error) {
+    console.error('Error en inscripción gratuita:', error);
+    res.status(500).json({ 
+      error: 'Error al procesar la inscripción',
+      detalle: error.message 
+    });
+  }
+});
+
+// ========================================
 // 🆕 VERIFICAR CERTIFICADO (PÚBLICO - PARA QR CODE) ✅
 // ========================================
 router.get('/verificar-certificado/:codigo', async (req, res) => {

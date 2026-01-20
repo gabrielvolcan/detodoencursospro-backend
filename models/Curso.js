@@ -47,6 +47,13 @@ const cursoSchema = new mongoose.Schema({
     enum: ['Principiante', 'Intermedio', 'Avanzado'],
     default: 'Principiante'
   },
+  // ========================================
+  // 🆕 NUEVO CAMPO: Curso Gratuito
+  // ========================================
+  esGratuito: {
+    type: Boolean,
+    default: false
+  },
   precioUSD: {
     type: Number,
     required: true,
@@ -91,9 +98,17 @@ const cursoSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Middleware para calcular precios por país (TASAS ACTUALIZADAS 10 ENERO 2026)
+// ========================================
+// 🔧 MIDDLEWARE ACTUALIZADO: Cursos gratuitos = $0
+// ========================================
 cursoSchema.pre('save', function(next) {
-  if (this.isModified('precioUSD')) {
+  // Si el curso es gratuito, forzar precio a 0
+  if (this.esGratuito) {
+    this.precioUSD = 0;
+  }
+
+  // Calcular precios por país (TASAS ACTUALIZADAS 10 ENERO 2026)
+  if (this.isModified('precioUSD') || this.isModified('esGratuito')) {
     const tasas = {
       peru: 3.36,
       chile: 894,
