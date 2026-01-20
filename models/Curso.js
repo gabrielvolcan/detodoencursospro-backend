@@ -54,9 +54,12 @@ const cursoSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  // ========================================
+  // ✅ CORREGIDO: precioUSD ahora tiene default en lugar de required
+  // ========================================
   precioUSD: {
     type: Number,
-    required: true,
+    default: 0,
     min: 0
   },
   precios: {
