@@ -16,7 +16,7 @@ const migrarYRecalcularPrecios = async () => {
       chile: 894,
       argentina: 1490,
       uruguay: 39,
-      venezuela: 1,
+      venezuela: 350,
       internacional: 1
     };
 
