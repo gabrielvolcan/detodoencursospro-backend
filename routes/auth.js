@@ -7,11 +7,11 @@ const { auth } = require('../middleware/auth');
 const { enviarEmailVerificacion, enviarEmailRecuperacion } = require('../services/emailService');
 
 // ========================================
-// 📝 REGISTRO CON EMAIL DE VERIFICACIÓN (SIN TOKEN INMEDIATO)
+// 📝 REGISTRO CON EMAIL DE VERIFICACIÓN + CURSO GRATUITO
 // ========================================
 router.post('/registro', async (req, res) => {
   try {
-    const { nombre, email, password, telefono } = req.body;
+    const { nombre, email, password, telefono, cursoGratuitoId } = req.body;
 
     // Verificar si el usuario ya existe
     const usuarioExistente = await Usuario.findOne({ email });
@@ -52,10 +52,45 @@ router.post('/registro', async (req, res) => {
 
     await usuario.save();
 
+    // 🆕 INSCRIBIR AUTOMÁTICAMENTE AL CURSO GRATUITO SI EXISTE
+    if (cursoGratuitoId) {
+      try {
+        const Curso = require('../models/Curso');
+        const curso = await Curso.findById(cursoGratuitoId);
+        
+        if (curso && (curso.esGratuito === true || curso.precioUSD === 0)) {
+          console.log('✅ Inscribiendo usuario al curso gratuito:', curso.titulo);
+          
+          usuario.cursosComprados.push({
+            curso: curso._id,
+            fechaCompra: new Date(),
+            precio: 0,
+            moneda: 'USD',
+            metodoPago: 'Gratuito',
+            estado: 'completado',
+            progresoVideos: [],
+            completado: false
+          });
+          
+          await usuario.save();
+          
+          // Incrementar contador
+          curso.estudiantes = (curso.estudiantes || 0) + 1;
+          await curso.save();
+          
+          console.log('✅ Curso gratuito inscrito exitosamente');
+        }
+      } catch (error) {
+        console.error('❌ Error inscribiendo curso gratuito:', error);
+        // No detener el registro si falla la inscripción
+      }
+    }
+
     // ✅ RESPONDER SIN TOKEN (usuario debe verificar primero)
     res.status(201).json({
       mensaje: 'Registro exitoso. Revisa tu email para verificar tu cuenta.',
-      emailEnviado: true
+      emailEnviado: true,
+      cursoGratuitoInscrito: !!cursoGratuitoId
     });
 
     // 📧 ENVIAR EMAIL EN BACKGROUND
@@ -64,6 +99,7 @@ router.post('/registro', async (req, res) => {
     );
 
   } catch (error) {
+    console.error('❌ Error en registro:', error);
     res.status(400).json({ error: error.message });
   }
 });
@@ -141,7 +177,7 @@ router.post('/login', async (req, res) => {
 });
 
 // ========================================
-// 🔑 SOLICITAR RECUPERACIÓN DE CONTRASEÑA (SIN Ñ)
+// 🔑 SOLICITAR RECUPERACIÓN DE CONTRASEÑA
 // ========================================
 router.post('/recuperar-contrasena', async (req, res) => {
   try {
@@ -149,7 +185,6 @@ router.post('/recuperar-contrasena', async (req, res) => {
 
     const usuario = await Usuario.findOne({ email });
     if (!usuario) {
-      // Por seguridad, no revelar si el email existe
       return res.json({ mensaje: 'Si el email existe, recibirás instrucciones para recuperar tu contraseña.' });
     }
 
@@ -160,7 +195,6 @@ router.post('/recuperar-contrasena', async (req, res) => {
 
     await usuario.save();
 
-    // ✅ RESPONDER INMEDIATAMENTE
     res.json({ mensaje: 'Si el email existe, recibirás instrucciones para recuperar tu contraseña.' });
 
     // 📧 ENVIAR EMAIL EN BACKGROUND
@@ -174,7 +208,7 @@ router.post('/recuperar-contrasena', async (req, res) => {
 });
 
 // ========================================
-// 🔓 RESTABLECER CONTRASEÑA (SIN Ñ)
+// 🔓 RESTABLECER CONTRASEÑA
 // ========================================
 router.post('/restablecer-contrasena/:token', async (req, res) => {
   try {
@@ -263,22 +297,26 @@ router.patch('/perfil', auth, async (req, res) => {
 });
 
 // ========================================
-// 📚 OBTENER MIS CURSOS
+// 📚 OBTENER MIS CURSOS (CORREGIDO)
 // ========================================
 router.get('/usuarios/mis-cursos', auth, async (req, res) => {
   try {
     const usuario = await Usuario.findById(req.usuario._id)
       .populate({
         path: 'cursosComprados.curso',
-        select: 'titulo imagen categoria nivel duracion temario'
+        select: 'titulo imagen categoria nivel duracion temario estudiantes'
       });
 
     if (!usuario) {
       return res.status(404).json({ error: 'Usuario no encontrado' });
     }
 
-    res.json(usuario.cursosComprados);
+    // Filtrar solo cursos válidos
+    const cursosValidos = usuario.cursosComprados.filter(c => c.curso !== null);
+
+    res.json(cursosValidos);
   } catch (error) {
+    console.error('❌ Error obteniendo cursos:', error);
     res.status(500).json({ error: error.message });
   }
 });
