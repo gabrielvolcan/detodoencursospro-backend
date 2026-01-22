@@ -8,13 +8,14 @@ const { auth, esAdmin } = require('../middleware/auth');
 // ========================================
 router.get('/', async (req, res) => {
   try {
-    const { tipo, categoria, destacados, buscar, limite = 50 } = req.query;
+    const { tipo, categoria, destacados, gratis, buscar, limite = 50 } = req.query;
     
     const filtros = { activo: true };
     
     if (tipo) filtros.tipo = tipo;
     if (categoria) filtros.categoria = categoria;
     if (destacados === 'true') filtros.destacado = true;
+    if (gratis === 'true') filtros.gratis = true;
     if (buscar) {
       filtros.$or = [
         { titulo: { $regex: buscar, $options: 'i' } },
@@ -26,6 +27,21 @@ router.get('/', async (req, res) => {
     const productos = await Producto.find(filtros)
       .sort({ destacado: -1, createdAt: -1 })
       .limit(parseInt(limite));
+    
+    res.json(productos);
+  } catch (error) {
+    console.error('Error obteniendo productos:', error);
+    res.status(500).json({ mensaje: 'Error al obtener productos' });
+  }
+});
+
+// ========================================
+// 📋 OBTENER TODOS (ADMIN - sin filtro activo)
+// ========================================
+router.get('/admin/todos', auth, esAdmin, async (req, res) => {
+  try {
+    const productos = await Producto.find()
+      .sort({ createdAt: -1 });
     
     res.json(productos);
   } catch (error) {
@@ -53,53 +69,45 @@ router.get('/:id', async (req, res) => {
 });
 
 // ========================================
-// 🆕 CREAR PRODUCTO - SIN MIDDLEWARES (TEST)
+// 🆕 CREAR PRODUCTO (Admin)
 // ========================================
-router.post('/', async (req, res) => {
+router.post('/', auth, esAdmin, async (req, res) => {
   try {
-    console.log('📦 req.body completo:', req.body);
-    console.log('📦 req.headers:', req.headers);
-    
-    // Extraer SOLO los 6 campos básicos
-    const { titulo, descripcion, tipo, categoria, imagen, precioUSD } = req.body;
-    
-    console.log('✂️ Campos extraídos:', { titulo, descripcion, tipo, categoria, imagen, precioUSD });
+    const { 
+      titulo, 
+      descripcion, 
+      tipo, 
+      categoria, 
+      imagen, 
+      precioUSD, 
+      archivoURL,
+      archivoPeso,
+      gratis,
+      destacado
+    } = req.body;
     
     // Validación
-    if (!titulo || !descripcion || !tipo || !categoria) {
-      console.log('❌ Validación fallida:', {
-        titulo: !titulo,
-        descripcion: !descripcion,
-        tipo: !tipo,
-        categoria: !categoria
-      });
-      
+    if (!titulo || !descripcion || !tipo || !categoria || !archivoURL) {
       return res.status(400).json({ 
-        mensaje: 'Faltan campos obligatorios',
-        recibido: req.body,
-        faltantes: {
-          titulo: !titulo,
-          descripcion: !descripcion,
-          tipo: !tipo,
-          categoria: !categoria
-        }
+        mensaje: 'Faltan campos obligatorios (titulo, descripcion, tipo, categoria, archivoURL)'
       });
     }
     
-    // Crear producto con valores limpios
     const productoNuevo = new Producto({
       titulo: titulo.trim(),
       descripcion: descripcion.trim(),
-      tipo: tipo,
+      tipo,
       categoria: categoria.trim(),
       imagen: imagen?.trim() || 'https://via.placeholder.com/400x300?text=Producto',
-      precioUSD: parseFloat(precioUSD) || 0,
+      precioUSD: gratis ? 0 : (parseFloat(precioUSD) || 0),
+      archivoURL: archivoURL.trim(),
+      archivoPeso: archivoPeso?.trim() || '',
+      gratis: Boolean(gratis),
+      destacado: Boolean(destacado),
       activo: true
     });
     
     await productoNuevo.save();
-    
-    console.log('✅ Producto creado exitosamente:', productoNuevo._id);
     
     res.status(201).json({
       mensaje: 'Producto creado exitosamente',
@@ -107,7 +115,7 @@ router.post('/', async (req, res) => {
     });
     
   } catch (error) {
-    console.error('❌ Error creando producto:', error);
+    console.error('Error creando producto:', error);
     res.status(500).json({ 
       mensaje: 'Error al crear producto',
       error: error.message
@@ -120,17 +128,12 @@ router.post('/', async (req, res) => {
 // ========================================
 router.put('/:id', auth, esAdmin, async (req, res) => {
   try {
-    const { titulo, descripcion, tipo, categoria, imagen, precioUSD } = req.body;
+    const datosActualizados = { ...req.body };
     
-    // Actualizar solo los campos permitidos
-    const datosActualizados = {
-      titulo: titulo?.trim(),
-      descripcion: descripcion?.trim(),
-      tipo,
-      categoria: categoria?.trim(),
-      imagen: imagen?.trim() || 'https://via.placeholder.com/400x300?text=Producto',
-      precioUSD: parseFloat(precioUSD) || 0
-    };
+    // Si se marca como gratis, precio = 0
+    if (datosActualizados.gratis) {
+      datosActualizados.precioUSD = 0;
+    }
     
     const producto = await Producto.findByIdAndUpdate(
       req.params.id,

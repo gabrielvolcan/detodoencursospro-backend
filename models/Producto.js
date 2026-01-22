@@ -1,7 +1,9 @@
 const mongoose = require('mongoose');
 
 const productoSchema = new mongoose.Schema({
-  // Campos obligatorios básicos
+  // ========================================
+  // CAMPOS BÁSICOS OBLIGATORIOS
+  // ========================================
   titulo: {
     type: String,
     required: [true, 'El título es obligatorio'],
@@ -14,6 +16,7 @@ const productoSchema = new mongoose.Schema({
   tipo: {
     type: String,
     required: [true, 'El tipo es obligatorio'],
+    enum: ['libro', 'ebook', 'curso', 'plantilla', 'guia', 'software', 'recurso', 'bundle'],
     default: 'libro'
   },
   categoria: {
@@ -21,46 +24,101 @@ const productoSchema = new mongoose.Schema({
     required: [true, 'La categoría es obligatoria']
   },
   
-  // CAMBIO IMPORTANTE: imagen y precioUSD con defaults
+  // ========================================
+  // ARCHIVOS Y MULTIMEDIA
+  // ========================================
   imagen: {
     type: String,
     default: 'https://via.placeholder.com/400x300?text=Producto'
   },
+  archivoURL: {
+    type: String,
+    required: [true, 'La URL del archivo es obligatoria']
+  },
+  archivoPeso: {
+    type: String,
+    default: ''
+  },
+  
+  // ========================================
+  // PRECIO Y MONEDAS
+  // ========================================
   precioUSD: {
     type: Number,
     default: 0,
     min: 0
   },
+  precios: {
+    type: mongoose.Schema.Types.Mixed,
+    default: {}
+  },
   
-  // Todo lo demás opcional con Mixed
+  // ========================================
+  // ESTADOS Y GESTIÓN
+  // ========================================
+  activo: {
+    type: Boolean,
+    default: true
+  },
+  destacado: {
+    type: Boolean,
+    default: false
+  },
+  gratis: {
+    type: Boolean,
+    default: false
+  },
+  nuevo: {
+    type: Boolean,
+    default: false
+  },
+  
+  // ========================================
+  // ESTADÍSTICAS
+  // ========================================
+  totalVentas: {
+    type: Number,
+    default: 0
+  },
+  totalCompradores: {
+    type: Number,
+    default: 0
+  },
+  descargas: {
+    type: Number,
+    default: 0
+  },
+  estudiantes: {
+    type: Number,
+    default: 0
+  },
+  
+  // ========================================
+  // VALORACIÓN
+  // ========================================
+  valoracion: {
+    promedio: { type: Number, default: 0 },
+    total: { type: Number, default: 0 }
+  },
+  
+  // ========================================
+  // CAMPOS OPCIONALES (MIXED)
+  // ========================================
   subtitulo: String,
   descripcionLarga: String,
   tags: { type: [String], default: [] },
   imagenes: { type: [String], default: [] },
-  
-  precios: { type: mongoose.Schema.Types.Mixed, default: {} },
   metadatos: { type: mongoose.Schema.Types.Mixed, default: {} },
   videos: { type: [mongoose.Schema.Types.Mixed], default: [] },
   archivos: { type: [mongoose.Schema.Types.Mixed], default: [] },
   incluye: { type: [mongoose.Schema.Types.Mixed], default: [] },
   oferta: { type: mongoose.Schema.Types.Mixed, default: {} },
   limites: { type: mongoose.Schema.Types.Mixed, default: {} },
-  
-  valoracion: {
-    promedio: { type: Number, default: 0 },
-    total: { type: Number, default: 0 }
-  },
-  
-  estudiantes: { type: Number, default: 0 },
-  descargas: { type: Number, default: 0 },
-  activo: { type: Boolean, default: true },
-  destacado: { type: Boolean, default: false },
-  nuevo: { type: Boolean, default: false },
   slug: String
   
 }, {
   timestamps: true,
-  strict: false  // Permite campos extra sin error
+  strict: false
 });
 
 // Auto-generar slug
