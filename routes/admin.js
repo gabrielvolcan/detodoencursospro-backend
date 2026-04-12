@@ -433,6 +433,76 @@ router.delete('/compra/:id', auth, esAdmin, async (req, res) => {
 });
 
 // ========================================
+// 👤 CRM - PERFIL DETALLADO DE USUARIO
+// ========================================
+
+// Obtener perfil completo de un usuario (con compras)
+router.get('/usuario/:id/perfil', auth, esAdmin, async (req, res) => {
+  try {
+    const usuario = await Usuario.findById(req.params.id)
+      .select('-password')
+      .populate('cursosComprados.curso', 'titulo imagen categoria nivel')
+      .populate('productosComprados.producto', 'titulo imagen tipo');
+
+    if (!usuario) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    // Obtener historial de compras
+    const compras = await Compra.find({ usuario: req.params.id })
+      .populate('cursos.curso', 'titulo')
+      .sort({ createdAt: -1 });
+
+    // Calcular total gastado (solo compras aprobadas)
+    const totalGastado = compras
+      .filter(c => c.estadoPago === 'aprobado')
+      .reduce((sum, c) => sum + (c.total || 0), 0);
+
+    res.json({
+      usuario,
+      compras,
+      totalGastado
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Actualizar notas del usuario
+router.patch('/usuario/:id/notas', auth, esAdmin, async (req, res) => {
+  try {
+    const { notas } = req.body;
+    const usuario = await Usuario.findByIdAndUpdate(
+      req.params.id,
+      { notas },
+      { new: true }
+    ).select('-password');
+
+    if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado' });
+    res.json(usuario);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Actualizar etiquetas del usuario
+router.patch('/usuario/:id/etiquetas', auth, esAdmin, async (req, res) => {
+  try {
+    const { etiquetas } = req.body;
+    const usuario = await Usuario.findByIdAndUpdate(
+      req.params.id,
+      { etiquetas },
+      { new: true }
+    ).select('-password');
+
+    if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado' });
+    res.json(usuario);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ========================================
 // 🔔 NOTIFICACIONES EN TIEMPO REAL
 // ========================================
 

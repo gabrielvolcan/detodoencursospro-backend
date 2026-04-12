@@ -105,6 +105,17 @@ const usuarioSchema = new mongoose.Schema({
   activo: {
     type: Boolean,
     default: true
+  },
+  // ========================================
+  // 🏷️ CRM - ETIQUETAS Y NOTAS
+  // ========================================
+  etiquetas: [{
+    type: String,
+    enum: ['VIP', 'Prospecto', 'Estudiante activo', 'Inactivo', 'Nuevo', 'Alto valor']
+  }],
+  notas: {
+    type: String,
+    default: ''
   }
 }, {
   timestamps: true
