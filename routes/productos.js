@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Producto = require('../models/Producto');
+const Usuario = require('../models/Usuario');
 const { auth, esAdmin } = require('../middleware/auth');
 
 // ========================================
@@ -65,6 +66,95 @@ router.get('/:id', async (req, res) => {
   } catch (error) {
     console.error('Error obteniendo producto:', error);
     res.status(500).json({ mensaje: 'Error al obtener producto' });
+  }
+});
+
+// ========================================
+// 📥 DESCARGA GRATUITA (autenticado)
+// ========================================
+router.post('/:id/descarga-gratuita', auth, async (req, res) => {
+  try {
+    const producto = await Producto.findById(req.params.id);
+
+    if (!producto) {
+      return res.status(404).json({ error: 'Producto no encontrado' });
+    }
+
+    // Verificar que el producto sea gratuito
+    if (!producto.gratis && producto.precioUSD > 0) {
+      return res.status(403).json({ error: 'Este producto no es gratuito' });
+    }
+
+    // Verificar que no lo tenga ya
+    const usuario = await Usuario.findById(req.usuario._id);
+    const yaLoTiene = usuario.productosComprados?.some(p => {
+      const pid = typeof p.producto === 'object' ? p.producto.toString() : p.producto;
+      return pid === req.params.id && p.estadoPago === 'aprobado';
+    });
+
+    if (!yaLoTiene) {
+      if (!usuario.productosComprados) usuario.productosComprados = [];
+      usuario.productosComprados.push({
+        producto: producto._id,
+        estadoPago: 'aprobado',
+        fechaCompra: new Date(),
+        precio: 0
+      });
+      await usuario.save();
+
+      // Incrementar contador de descargas
+      await Producto.findByIdAndUpdate(req.params.id, {
+        $inc: { descargas: 1, totalCompradores: 1 }
+      });
+    }
+
+    res.json({
+      mensaje: 'Acceso concedido',
+      archivoURL: producto.archivoURL
+    });
+  } catch (error) {
+    console.error('Error en descarga gratuita:', error);
+    res.status(500).json({ error: 'Error al procesar la descarga' });
+  }
+});
+
+// ========================================
+// 📥 DESCARGAR ARCHIVO (autenticado + comprado)
+// ========================================
+router.get('/:id/archivos/:archivoId/descargar', auth, async (req, res) => {
+  try {
+    const producto = await Producto.findById(req.params.id);
+    if (!producto) return res.status(404).json({ error: 'Producto no encontrado' });
+
+    // Verificar que el usuario lo compró
+    const usuario = await Usuario.findById(req.usuario._id);
+    const comprado = usuario.productosComprados?.some(p => {
+      const pid = typeof p.producto === 'object' ? p.producto.toString() : p.producto;
+      return pid === req.params.id && p.estadoPago === 'aprobado';
+    });
+
+    // También gratuito
+    const esGratuito = producto.gratis || producto.precioUSD === 0;
+
+    if (!comprado && !esGratuito) {
+      return res.status(403).json({ error: 'No tienes acceso a este archivo' });
+    }
+
+    const archivo = producto.archivos?.find(
+      a => a._id?.toString() === req.params.archivoId
+    );
+
+    if (!archivo) {
+      return res.status(404).json({ error: 'Archivo no encontrado' });
+    }
+
+    // Incrementar contador
+    await Producto.findByIdAndUpdate(req.params.id, { $inc: { descargas: 1 } });
+
+    res.json({ downloadUrl: archivo.url });
+  } catch (error) {
+    console.error('Error descargando archivo:', error);
+    res.status(500).json({ error: 'Error al obtener el archivo' });
   }
 });
 

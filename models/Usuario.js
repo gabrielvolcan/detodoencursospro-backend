@@ -80,6 +80,28 @@ const usuarioSchema = new mongoose.Schema({
       codigoCertificado: String
     }
   }],
+  // ========================================
+  // 📦 PRODUCTOS COMPRADOS
+  // ========================================
+  productosComprados: [{
+    producto: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Producto'
+    },
+    estadoPago: {
+      type: String,
+      enum: ['pendiente', 'aprobado', 'rechazado'],
+      default: 'pendiente'
+    },
+    fechaCompra: {
+      type: Date,
+      default: Date.now
+    },
+    precio: {
+      type: Number,
+      default: 0
+    }
+  }],
   activo: {
     type: Boolean,
     default: true
