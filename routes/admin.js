@@ -5,6 +5,7 @@ const Usuario = require('../models/Usuario');
 const Compra = require('../models/Compra');
 const { auth, esAdmin } = require('../middleware/auth');
 const { enviarEmailCompraAprobada, enviarEmailRechazo } = require('../services/emailService');
+const { notificarPagoAprobado, notificarPagoRechazado } = require('../services/telegramService');
 
 // Dashboard - estadísticas generales
 router.get('/dashboard', auth, esAdmin, async (req, res) => {
@@ -225,6 +226,15 @@ router.post('/aprobar-pago/:compraId', auth, esAdmin, async (req, res) => {
     // ✅ CORREGIDO: Usar enviarEmailCompraAprobada en vez de enviarEmailAprobacion
     await enviarEmailCompraAprobada(usuario, compra.cursos.map(c => c.curso), compra);
 
+    // 📣 Notificar a Telegram
+    notificarPagoAprobado({
+      nombre: usuario.nombre,
+      email:  usuario.email,
+      total:  compra.total,
+      moneda: compra.moneda,
+      cursos: compra.cursos.map(c => c.curso?.titulo || 'Curso')
+    });
+
     res.json({
       mensaje: 'Pago aprobado y email enviado al usuario',
       compra
@@ -251,6 +261,15 @@ router.post('/rechazar-pago/:compraId', auth, esAdmin, async (req, res) => {
     await compra.save();
 
     await enviarEmailRechazo(compra.usuario, motivo);
+
+    // 📣 Notificar a Telegram
+    notificarPagoRechazado({
+      nombre: compra.usuario?.nombre,
+      email:  compra.usuario?.email,
+      total:  compra.total,
+      moneda: compra.moneda,
+      motivo: motivo || 'Comprobante inválido'
+    });
 
     res.json({
       mensaje: 'Pago rechazado y usuario notificado',

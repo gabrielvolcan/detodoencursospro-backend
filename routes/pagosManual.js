@@ -4,6 +4,7 @@ const Curso = require('../models/Curso');
 const Usuario = require('../models/Usuario');
 const Compra = require('../models/Compra');
 const { auth } = require('../middleware/auth');
+const { notificarNuevaCompra, notificarComprobanteSubido } = require('../services/telegramService');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
@@ -123,6 +124,17 @@ router.post('/crear-orden-manual', auth, async (req, res) => {
 
     await compra.save();
 
+    // 📣 Notificar a Telegram
+    notificarNuevaCompra({
+      nombre: req.usuario.nombre,
+      email:  req.usuario.email,
+      total:  compra.total,
+      moneda: compra.moneda,
+      metodo: metodoPago.nombre || metodoPago.tipo,
+      cursos: cursos.map(c => c.titulo),
+      pais:   paisNormalizado
+    });
+
     res.status(201).json({
       compraId: compra._id,
       total: compra.total,
@@ -162,6 +174,16 @@ router.post('/subir-comprobante/:compraId', auth, upload.single('comprobante'), 
     compra.estadoPago = 'en_revision';
 
     await compra.save();
+
+    // 📣 Notificar a Telegram
+    notificarComprobanteSubido({
+      nombre:   req.usuario.nombre,
+      email:    req.usuario.email,
+      total:    compra.total,
+      moneda:   compra.moneda,
+      metodo:   compra.metodoPago?.nombre || compra.metodoPago?.tipo || 'Manual',
+      compraId: compra._id
+    });
 
     res.json({
       mensaje: 'Comprobante subido exitosamente. Tu pago está en revisión.',
