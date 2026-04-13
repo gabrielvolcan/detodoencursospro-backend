@@ -5,6 +5,7 @@ const Usuario = require('../models/Usuario');
 const Compra = require('../models/Compra');
 const { auth } = require('../middleware/auth');
 const { notificarNuevaCompra, notificarComprobanteSubido } = require('../services/telegramService');
+const { limitadorSubidaArchivos } = require('../middleware/security');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
@@ -148,7 +149,7 @@ router.post('/crear-orden-manual', auth, async (req, res) => {
 });
 
 // Subir comprobante de pago
-router.post('/subir-comprobante/:compraId', auth, upload.single('comprobante'), async (req, res) => {
+router.post('/subir-comprobante/:compraId', auth, limitadorSubidaArchivos, upload.single('comprobante'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No se recibió ningún archivo' });

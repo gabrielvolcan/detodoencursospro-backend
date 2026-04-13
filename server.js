@@ -2,6 +2,9 @@ require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const helmet = require('helmet');
+const mongoSanitize = require('express-mongo-sanitize');
+const { limitadorGeneral } = require('./middleware/security');
 
 const app = express();
 const emailMasivoRoutes = require('./routes/emailMasivo');
@@ -32,14 +35,30 @@ app.use(cors({
 }));
 
 // ========================================
+// 🛡️ SEGURIDAD
+// ========================================
+
+// Headers de seguridad HTTP (XSS, clickjacking, MIME sniffing, etc.)
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' } // Permite imágenes desde otros dominios
+}));
+
+// Rate limiting general — 200 req / IP / 15min
+app.use('/api/', limitadorGeneral);
+
+// ========================================
 // MIDDLEWARE GENERAL
 // ========================================
 
 // Para webhook de Stripe (debe ir antes de express.json())
 app.use('/api/pagos/webhook', express.raw({ type: 'application/json' }));
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Límite de 10kb por request (previene ataques de body oversized)
+app.use(express.json({ limit: '10kb' }));
+app.use(express.urlencoded({ extended: true, limit: '10kb' }));
+
+// Sanitizar inputs contra inyección NoSQL (ej: { "$gt": "" } en email)
+app.use(mongoSanitize());
 
 // Servir archivos estáticos (comprobantes)
 app.use('/uploads', express.static('uploads'));
@@ -47,7 +66,7 @@ app.use('/uploads', express.static('uploads'));
 // ========================================
 // CONEXIÓN A MONGODB
 // ========================================
-mongoose.connect('mongodb+srv://gabrielalejandrovolcan_db_user:ZLZuTTB6nGwBEU6B@cluster0.kbw4fz6.mongodb.net/cursos-camaras?retryWrites=true&w=majority')
+mongoose.connect(process.env.MONGODB_URI)
   .then(() => console.log('✅ Conectado a MongoDB'))
   .catch(err => console.error('❌ Error conectando a MongoDB:', err));
 

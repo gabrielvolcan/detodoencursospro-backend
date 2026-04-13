@@ -5,16 +5,37 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { auth } = require('../middleware/auth');
 const { enviarEmailVerificacion, enviarEmailRecuperacion } = require('../services/emailService');
+const {
+  limitadorLogin,
+  limitadorRegistro,
+  limitadorRecuperacion,
+  esEmailValido
+} = require('../middleware/security');
 
 // ========================================
 // 📝 REGISTRO CON EMAIL DE VERIFICACIÓN + CURSO GRATUITO
 // ========================================
-router.post('/registro', async (req, res) => {
+router.post('/registro', limitadorRegistro, async (req, res) => {
   try {
     const { nombre, email, password, telefono, cursoGratuitoId } = req.body;
 
+    // Validar campos obligatorios
+    if (!nombre || !email || !password) {
+      return res.status(400).json({ error: 'Nombre, email y contraseña son obligatorios' });
+    }
+
+    // Validar formato de email
+    if (!esEmailValido(email)) {
+      return res.status(400).json({ error: 'El formato del email no es válido' });
+    }
+
+    // Limitar longitud de campos
+    if (nombre.length > 100) {
+      return res.status(400).json({ error: 'El nombre es demasiado largo' });
+    }
+
     // Verificar si el usuario ya existe
-    const usuarioExistente = await Usuario.findOne({ email });
+    const usuarioExistente = await Usuario.findOne({ email: email.toLowerCase() });
     if (usuarioExistente) {
       return res.status(400).json({ error: 'El email ya está registrado' });
     }
@@ -132,12 +153,20 @@ router.get('/verificar-email/:token', async (req, res) => {
 // ========================================
 // 🔐 LOGIN (REQUIERE EMAIL VERIFICADO)
 // ========================================
-router.post('/login', async (req, res) => {
+router.post('/login', limitadorLogin, async (req, res) => {
   try {
     const { email, password } = req.body;
 
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email y contraseña son obligatorios' });
+    }
+
+    if (!esEmailValido(email)) {
+      return res.status(401).json({ error: 'Credenciales inválidas' });
+    }
+
     // Buscar usuario
-    const usuario = await Usuario.findOne({ email });
+    const usuario = await Usuario.findOne({ email: email.toLowerCase() });
     if (!usuario) {
       return res.status(401).json({ error: 'Credenciales inválidas' });
     }
@@ -179,11 +208,16 @@ router.post('/login', async (req, res) => {
 // ========================================
 // 🔑 SOLICITAR RECUPERACIÓN DE CONTRASEÑA
 // ========================================
-router.post('/recuperar-contrasena', async (req, res) => {
+router.post('/recuperar-contrasena', limitadorRecuperacion, async (req, res) => {
   try {
     const { email } = req.body;
 
-    const usuario = await Usuario.findOne({ email });
+    if (!email || !esEmailValido(email)) {
+      // Respuesta genérica para no confirmar si el email existe o no
+      return res.json({ mensaje: 'Si el email existe, recibirás instrucciones para recuperar tu contraseña.' });
+    }
+
+    const usuario = await Usuario.findOne({ email: email.toLowerCase() });
     if (!usuario) {
       return res.json({ mensaje: 'Si el email existe, recibirás instrucciones para recuperar tu contraseña.' });
     }
