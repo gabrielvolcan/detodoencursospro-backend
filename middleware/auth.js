@@ -9,11 +9,24 @@ const auth = async (req, res, next) => {
       throw new Error();
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
+
+    if (!decoded || !decoded.id) {
+      throw new Error();
+    }
+
     const usuario = await Usuario.findById(decoded.id);
 
     if (!usuario || !usuario.activo) {
       throw new Error();
+    }
+
+    // Invalidar tokens emitidos antes del último cambio de contraseña
+    if (usuario.passwordChangedAt && decoded.iat) {
+      const cambioSeg = Math.floor(usuario.passwordChangedAt.getTime() / 1000);
+      if (decoded.iat < cambioSeg) {
+        throw new Error();
+      }
     }
 
     req.usuario = usuario;

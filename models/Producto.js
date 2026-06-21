@@ -117,8 +117,7 @@ const productoSchema = new mongoose.Schema({
   slug: String
   
 }, {
-  timestamps: true,
-  strict: false
+  timestamps: true
 });
 
 // Auto-generar slug

@@ -1,11 +1,60 @@
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const Curso = require('../models/Curso');
 const Usuario = require('../models/Usuario');
 const Compra = require('../models/Compra');
 const { auth, esAdmin } = require('../middleware/auth');
 const { enviarEmailCompraAprobada, enviarEmailRechazo } = require('../services/emailService');
 const { notificarPagoAprobado, notificarPagoRechazado } = require('../services/telegramService');
+
+// Email del administrador principal (protegido). Configurable por entorno.
+const ADMIN_PRINCIPAL_EMAIL = (process.env.SEED_ADMIN_EMAIL || '').toLowerCase();
+
+// Acredita/desacredita los cursos de una compra al usuario según la transición de estado.
+// Centraliza la lógica para que todos los caminos de cambio de estado sean consistentes.
+async function sincronizarCursosPorEstado(compra, estadoAnterior, estadoNuevo) {
+  if (estadoAnterior === estadoNuevo) return;
+
+  const usuario = await Usuario.findById(compra.usuario);
+  if (!usuario) return;
+
+  // Pasa a aprobado -> acreditar cursos
+  if (estadoNuevo === 'aprobado' && estadoAnterior !== 'aprobado') {
+    for (const item of compra.cursos) {
+      const cursoId = item.curso?._id || item.curso;
+      const yaComprado = usuario.cursosComprados.some(
+        c => c.curso.toString() === cursoId.toString()
+      );
+      if (!yaComprado) {
+        usuario.cursosComprados.push({
+          curso: cursoId,
+          fechaCompra: new Date(),
+          precioCompra: item.precio,
+          progresoVideos: [],
+          completado: false
+        });
+        await Curso.findByIdAndUpdate(cursoId, { $inc: { estudiantes: 1 } });
+      }
+    }
+    await usuario.save();
+  }
+
+  // Sale de aprobado -> remover cursos de esta compra
+  if (estadoAnterior === 'aprobado' && estadoNuevo !== 'aprobado') {
+    for (const item of compra.cursos) {
+      const cursoId = item.curso?._id || item.curso;
+      const longitudPrevia = usuario.cursosComprados.length;
+      usuario.cursosComprados = usuario.cursosComprados.filter(
+        c => c.curso.toString() !== cursoId.toString()
+      );
+      if (usuario.cursosComprados.length < longitudPrevia) {
+        await Curso.findByIdAndUpdate(cursoId, { $inc: { estudiantes: -1 } });
+      }
+    }
+    await usuario.save();
+  }
+}
 
 // Dashboard - estadísticas generales
 router.get('/dashboard', auth, esAdmin, async (req, res) => {
@@ -93,10 +142,12 @@ router.get('/ventas', auth, esAdmin, async (req, res) => {
     
     if (desde || hasta) {
       filtro.createdAt = {};
-      if (desde) filtro.createdAt.$gte = new Date(desde);
-      if (hasta) filtro.createdAt.$lte = new Date(hasta);
+      const fDesde = desde ? new Date(desde) : null;
+      const fHasta = hasta ? new Date(hasta) : null;
+      if (fDesde && !isNaN(fDesde)) filtro.createdAt.$gte = fDesde;
+      if (fHasta && !isNaN(fHasta)) filtro.createdAt.$lte = fHasta;
     }
-    
+
     const ventas = await Compra.find(filtro)
       .populate('usuario', 'nombre email telefono')
       .populate('cursos.curso', 'titulo imagen')
@@ -146,17 +197,21 @@ router.put('/usuario/:id/rol', auth, esAdmin, async (req, res) => {
 router.patch('/usuarios/:id/estado', auth, esAdmin, async (req, res) => {
   try {
     const { activo } = req.body;
-    
+
+    if (typeof activo !== 'boolean') {
+      return res.status(400).json({ error: 'El campo "activo" debe ser booleano' });
+    }
+
     const usuario = await Usuario.findByIdAndUpdate(
       req.params.id,
       { activo },
       { new: true }
     ).select('-password');
-    
+
     if (!usuario) {
       return res.status(404).json({ error: 'Usuario no encontrado' });
     }
-    
+
     res.json(usuario);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -289,20 +344,47 @@ router.post('/rechazar-pago/:compraId', auth, esAdmin, async (req, res) => {
 router.put('/usuario/:id', auth, esAdmin, async (req, res) => {
   try {
     const { nombre, email, telefono, pais } = req.body;
-    
-    const usuario = await Usuario.findByIdAndUpdate(
-      req.params.id,
-      { nombre, email, telefono, pais },
-      { new: true, runValidators: true }
-    ).select('-password');
 
-    if (!usuario) {
+    // Whitelist de campos editables (no se acepta rol/activo/password por esta vía)
+    const cambios = {};
+    if (nombre !== undefined) cambios.nombre = String(nombre);
+    if (telefono !== undefined) cambios.telefono = String(telefono);
+    if (pais !== undefined) cambios.pais = String(pais);
+
+    // Validación de email: formato + unicidad
+    if (email !== undefined) {
+      const emailNorm = String(email).toLowerCase().trim();
+      const regexEmail = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+      if (!regexEmail.test(emailNorm)) {
+        return res.status(400).json({ error: 'El formato del email no es válido' });
+      }
+      const enUso = await Usuario.findOne({ email: emailNorm, _id: { $ne: req.params.id } });
+      if (enUso) {
+        return res.status(400).json({ error: 'Ese email ya está en uso' });
+      }
+      cambios.email = emailNorm;
+    }
+
+    const objetivo = await Usuario.findById(req.params.id);
+    if (!objetivo) {
       return res.status(404).json({ error: 'Usuario no encontrado' });
     }
 
+    // Proteger el email del administrador principal
+    if (ADMIN_PRINCIPAL_EMAIL && objetivo.email === ADMIN_PRINCIPAL_EMAIL && cambios.email && cambios.email !== ADMIN_PRINCIPAL_EMAIL) {
+      return res.status(403).json({ error: 'No se puede cambiar el email del administrador principal' });
+    }
+
+    const usuario = await Usuario.findByIdAndUpdate(
+      req.params.id,
+      cambios,
+      { new: true, runValidators: true }
+    ).select('-password');
+
     res.json(usuario);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Error editando usuario:', error);
+    res.status(500).json({ error: 'Error al editar el usuario' });
   }
 });
 
@@ -316,7 +398,7 @@ router.delete('/usuario/:id', auth, esAdmin, async (req, res) => {
     }
 
     // No permitir eliminar admin principal
-    if (usuario.email === 'admin@securityacademy.com') {
+    if (ADMIN_PRINCIPAL_EMAIL && usuario.email === ADMIN_PRINCIPAL_EMAIL) {
       return res.status(403).json({ error: 'No se puede eliminar el administrador principal' });
     }
 
@@ -367,14 +449,19 @@ router.get('/todas-compras', auth, esAdmin, async (req, res) => {
     
     if (desde || hasta) {
       filtro.createdAt = {};
-      if (desde) filtro.createdAt.$gte = new Date(desde);
-      if (hasta) filtro.createdAt.$lte = new Date(hasta);
+      const fDesde = desde ? new Date(desde) : null;
+      const fHasta = hasta ? new Date(hasta) : null;
+      if (fDesde && !isNaN(fDesde)) filtro.createdAt.$gte = fDesde;
+      if (fHasta && !isNaN(fHasta)) filtro.createdAt.$lte = fHasta;
     }
-    
+
     if (usuario) {
+      if (!mongoose.Types.ObjectId.isValid(usuario)) {
+        return res.status(400).json({ error: 'Usuario no válido' });
+      }
       filtro.usuario = usuario;
     }
-    
+
     const compras = await Compra.find(filtro)
       .populate('usuario', 'nombre email telefono')
       .populate('cursos.curso', 'titulo imagen')
@@ -395,20 +482,25 @@ router.put('/compra/:id/estado', auth, esAdmin, async (req, res) => {
     if (!estadosValidos.includes(estadoPago)) {
       return res.status(400).json({ error: 'Estado inválido' });
     }
-    
-    const compra = await Compra.findByIdAndUpdate(
-      req.params.id,
-      { estadoPago, notasAdmin },
-      { new: true }
-    )
-    .populate('usuario', 'nombre email')
-    .populate('cursos.curso', 'titulo');
 
+    const compra = await Compra.findById(req.params.id);
     if (!compra) {
       return res.status(404).json({ error: 'Compra no encontrada' });
     }
 
-    res.json(compra);
+    const estadoAnterior = compra.estadoPago;
+    compra.estadoPago = estadoPago;
+    if (notasAdmin !== undefined) compra.notasAdmin = notasAdmin;
+    await compra.save();
+
+    // Acreditar/desacreditar cursos según la transición (consistencia con aprobar-pago)
+    await sincronizarCursosPorEstado(compra, estadoAnterior, estadoPago);
+
+    const compraActualizada = await Compra.findById(compra._id)
+      .populate('usuario', 'nombre email')
+      .populate('cursos.curso', 'titulo');
+
+    res.json(compraActualizada);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

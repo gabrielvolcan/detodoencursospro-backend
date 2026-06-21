@@ -80,6 +80,21 @@ const limitadorSubidaArchivos = rateLimit({
   }
 });
 
+/**
+ * Límite para envío masivo de emails (operación cara).
+ * 3 envíos por hora — evita quemar la cuota/reputación del proveedor SMTP
+ * por clicks repetidos o un admin comprometido.
+ */
+const limitadorEmailMasivo = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 3,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: 'Demasiados envíos masivos. Espera 1 hora antes de enviar otra campaña.'
+  }
+});
+
 // ========================================
 // 🧹 SANITIZACIÓN DE INPUTS
 // ========================================
@@ -93,6 +108,20 @@ const sanitizarString = (str) => {
   return str
     .trim()
     .replace(/[<>"'`;]/g, ''); // Eliminar caracteres peligrosos para XSS
+};
+
+/**
+ * Escapa entidades HTML para interpolar de forma segura datos del usuario
+ * dentro de plantillas HTML (emails). Previene inyección de HTML/phishing.
+ */
+const escaparHtml = (valor) => {
+  if (valor === null || valor === undefined) return '';
+  return String(valor)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 };
 
 /**
@@ -124,7 +153,9 @@ module.exports = {
   limitadorRegistro,
   limitadorRecuperacion,
   limitadorSubidaArchivos,
+  limitadorEmailMasivo,
   sanitizarBody,
   esEmailValido,
-  sanitizarString
+  sanitizarString,
+  escaparHtml
 };

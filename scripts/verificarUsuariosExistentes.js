@@ -5,7 +5,7 @@ const Usuario = require('../models/Usuario');
 const verificarUsuarios = async () => {
   try {
     // Conectar a MongoDB
-    await mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://gabrielalejandrovolcan_db_user:ZLZuTTB6nGwBEU6B@cluster0.kbw4fz6.mongodb.net/cursos-camaras?retryWrites=true&w=majority');
+    await mongoose.connect(process.env.MONGODB_URI);
     
     console.log('✅ Conectado a MongoDB');
     

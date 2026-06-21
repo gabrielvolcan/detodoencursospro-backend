@@ -1,4 +1,5 @@
 const { Resend } = require('resend');
+const { escaparHtml } = require('../middleware/security');
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -62,7 +63,7 @@ const enviarEmailVerificacion = async (email, nombre, token) => {
             <h1>¡Bienvenido a Detodo en Cursos! 🎉</h1>
           </div>
           <div class="content">
-            <h2>Hola ${nombre},</h2>
+            <h2>Hola ${escaparHtml(nombre)},</h2>
             <p>Gracias por registrarte en nuestra plataforma. Para completar tu registro, por favor verifica tu email haciendo click en el botón de abajo:</p>
             
             <div style="text-align: center;">
@@ -157,7 +158,7 @@ const enviarEmailRecuperacion = async (email, nombre, token) => {
             <h1>🔑 Recuperación de Contraseña</h1>
           </div>
           <div class="content">
-            <h2>Hola ${nombre},</h2>
+            <h2>Hola ${escaparHtml(nombre)},</h2>
             <p>Recibimos una solicitud para restablecer tu contraseña. Si fuiste tú, haz click en el botón de abajo:</p>
             
             <div style="text-align: center;">
@@ -196,7 +197,7 @@ const enviarEmailRecuperacion = async (email, nombre, token) => {
 // ✅ EMAIL DE COMPRA APROBADA
 // ========================================
 const enviarEmailCompraAprobada = async (usuario, cursos, compra) => {
-  const listaCursos = cursos.map(curso => `<li>${curso.titulo}</li>`).join('');
+  const listaCursos = cursos.map(curso => `<li>${escaparHtml(curso.titulo)}</li>`).join('');
 
   try {
     await resend.emails.send({
@@ -257,8 +258,8 @@ const enviarEmailCompraAprobada = async (usuario, cursos, compra) => {
             <h1>🎉 ¡Tu pago ha sido aprobado!</h1>
           </div>
           <div class="content">
-            <h2>Hola ${usuario.nombre},</h2>
-            <p>¡Excelentes noticias! Tu pago de <strong>${compra.moneda} ${compra.total}</strong> ha sido verificado y aprobado exitosamente.</p>
+            <h2>Hola ${escaparHtml(usuario.nombre)},</h2>
+            <p>¡Excelentes noticias! Tu pago de <strong>${escaparHtml(compra.moneda)} ${escaparHtml(compra.total)}</strong> ha sido verificado y aprobado exitosamente.</p>
             
             <p><strong>Ya puedes acceder a tus cursos:</strong></p>
             <ul>
@@ -349,12 +350,12 @@ const enviarEmailRechazo = async (usuario, motivo) => {
             <h1>⚠️ Comprobante Rechazado</h1>
           </div>
           <div class="content">
-            <h2>Hola ${usuario.nombre},</h2>
+            <h2>Hola ${escaparHtml(usuario.nombre)},</h2>
             <p>Lamentamos informarte que tu comprobante de pago no pudo ser verificado.</p>
-            
+
             <div class="warning">
               <strong>Motivo del rechazo:</strong>
-              <p>${motivo || 'El comprobante no coincide con los datos de la compra o no es válido.'}</p>
+              <p>${escaparHtml(motivo) || 'El comprobante no coincide con los datos de la compra o no es válido.'}</p>
             </div>
             
             <p><strong>¿Qué puedes hacer?</strong></p>

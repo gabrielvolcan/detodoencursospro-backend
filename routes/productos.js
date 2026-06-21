@@ -18,14 +18,17 @@ router.get('/', async (req, res) => {
     if (destacados === 'true') filtros.destacado = true;
     if (gratis === 'true') filtros.gratis = true;
     if (buscar) {
+      // Escapar metacaracteres regex y limitar longitud (previene ReDoS)
+      const termino = String(buscar).slice(0, 100).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       filtros.$or = [
-        { titulo: { $regex: buscar, $options: 'i' } },
-        { descripcion: { $regex: buscar, $options: 'i' } },
-        { tags: { $in: [new RegExp(buscar, 'i')] } }
+        { titulo: { $regex: termino, $options: 'i' } },
+        { descripcion: { $regex: termino, $options: 'i' } },
+        { tags: { $in: [new RegExp(termino, 'i')] } }
       ];
     }
-    
+
     const productos = await Producto.find(filtros)
+      .select('-archivoURL -archivos')
       .sort({ destacado: -1, createdAt: -1 })
       .limit(parseInt(limite));
     
@@ -57,12 +60,34 @@ router.get('/admin/todos', auth, esAdmin, async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const producto = await Producto.findById(req.params.id);
-    
+
     if (!producto) {
       return res.status(404).json({ mensaje: 'Producto no encontrado' });
     }
-    
-    res.json(producto);
+
+    // Endpoint PÚBLICO: no exponer los links reales de descarga.
+    // Se conservan metadatos que la UI necesita (titulo, descripcion, tipo,
+    // imagen, precios, nombres/cantidad de archivos) pero se elimina archivoURL
+    // y la URL real dentro de cada archivo. La descarga real va por endpoint
+    // autenticado. Se preserva la URL solo en items de vista previa (esVistaPrevia).
+    const productoPublico = producto.toObject();
+    delete productoPublico.archivoURL;
+
+    if (Array.isArray(productoPublico.archivos)) {
+      productoPublico.archivos = productoPublico.archivos.map((archivo) => {
+        if (archivo && typeof archivo === 'object') {
+          const copia = { ...archivo };
+          if (!copia.esVistaPrevia) {
+            delete copia.url;
+            delete copia.archivoURL;
+          }
+          return copia;
+        }
+        return archivo;
+      });
+    }
+
+    res.json(productoPublico);
   } catch (error) {
     console.error('Error obteniendo producto:', error);
     res.status(500).json({ mensaje: 'Error al obtener producto' });
@@ -80,8 +105,10 @@ router.post('/:id/descarga-gratuita', auth, async (req, res) => {
       return res.status(404).json({ error: 'Producto no encontrado' });
     }
 
-    // Verificar que el producto sea gratuito
-    if (!producto.gratis && producto.precioUSD > 0) {
+    // Verificar que el producto sea REALMENTE gratuito.
+    // Solo se entrega el archivo si gratis === true Y no tiene precio.
+    const esRealmenteGratis = producto.gratis === true && (!producto.precioUSD || producto.precioUSD === 0);
+    if (!esRealmenteGratis) {
       return res.status(403).json({ error: 'Este producto no es gratuito' });
     }
 
@@ -133,8 +160,10 @@ router.get('/:id/archivos/:archivoId/descargar', auth, async (req, res) => {
       return pid === req.params.id && p.estadoPago === 'aprobado';
     });
 
-    // También gratuito
-    const esGratuito = producto.gratis || producto.precioUSD === 0;
+    // También gratuito — SOLO si está marcado explícitamente como gratis.
+    // No se usa `precioUSD === 0` porque el default del modelo es 0 y dejaría
+    // descargables productos de pago sin precio configurado.
+    const esGratuito = producto.gratis === true && (!producto.precioUSD || producto.precioUSD === 0);
 
     if (!comprado && !esGratuito) {
       return res.status(403).json({ error: 'No tienes acceso a este archivo' });
@@ -216,15 +245,29 @@ router.post('/', auth, esAdmin, async (req, res) => {
 // ========================================
 // ✏️ ACTUALIZAR PRODUCTO (Admin)
 // ========================================
+// Campos editables permitidos (whitelist según el schema de Producto)
+const CAMPOS_EDITABLES_PRODUCTO = [
+  'titulo', 'subtitulo', 'descripcion', 'descripcionLarga', 'tipo', 'categoria',
+  'imagen', 'imagenes', 'archivoURL', 'archivoPeso', 'archivos', 'precioUSD',
+  'precios', 'activo', 'destacado', 'gratis', 'nuevo', 'tags', 'metadatos',
+  'videos', 'incluye', 'oferta', 'limites', 'slug', 'valoracion'
+];
+
 router.put('/:id', auth, esAdmin, async (req, res) => {
   try {
-    const datosActualizados = { ...req.body };
-    
+    // Whitelist: solo se aceptan campos editables conocidos del modelo
+    const datosActualizados = {};
+    for (const campo of CAMPOS_EDITABLES_PRODUCTO) {
+      if (req.body[campo] !== undefined) {
+        datosActualizados[campo] = req.body[campo];
+      }
+    }
+
     // Si se marca como gratis, precio = 0
     if (datosActualizados.gratis) {
       datosActualizados.precioUSD = 0;
     }
-    
+
     const producto = await Producto.findByIdAndUpdate(
       req.params.id,
       datosActualizados,

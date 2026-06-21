@@ -3,6 +3,7 @@ const router = express.Router();
 const Curso = require('../models/Curso');
 const Usuario = require('../models/Usuario');
 const { auth, esAdmin } = require('../middleware/auth');
+const { limitadorLogin } = require('../middleware/security');
 
 // Obtener todos los cursos (público) con filtros
 router.get('/', async (req, res) => {
@@ -24,17 +25,20 @@ router.get('/', async (req, res) => {
     }
     
     if (busqueda) {
+      // Escapar metacaracteres regex y limitar longitud (previene ReDoS)
+      const termino = String(busqueda).slice(0, 100).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       filtro.$or = [
-        { titulo: { $regex: busqueda, $options: 'i' } },
-        { descripcion: { $regex: busqueda, $options: 'i' } },
-        { descripcionCorta: { $regex: busqueda, $options: 'i' } }
+        { titulo: { $regex: termino, $options: 'i' } },
+        { descripcion: { $regex: termino, $options: 'i' } },
+        { descripcionCorta: { $regex: termino, $options: 'i' } }
       ];
     }
     
     const cursos = await Curso.find(filtro).sort({ destacado: -1, createdAt: -1 });
     res.json(cursos);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Error obteniendo cursos:', error);
+    res.status(500).json({ error: 'Error al obtener los cursos' });
   }
 });
 
@@ -44,7 +48,8 @@ router.get('/meta/categorias', async (req, res) => {
     const categorias = await Curso.distinct('categoria', { activo: true });
     res.json(categorias);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Error obteniendo categorías:', error);
+    res.status(500).json({ error: 'Error al obtener las categorías' });
   }
 });
 
@@ -54,7 +59,8 @@ router.get('/meta/niveles', async (req, res) => {
     const niveles = await Curso.distinct('nivel', { activo: true });
     res.json(niveles);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Error obteniendo niveles:', error);
+    res.status(500).json({ error: 'Error al obtener los niveles' });
   }
 });
 
@@ -112,9 +118,8 @@ router.post('/:id/inscripcion-gratuita', auth, async (req, res) => {
     });
   } catch (error) {
     console.error('Error en inscripción gratuita:', error);
-    res.status(500).json({ 
-      error: 'Error al procesar la inscripción',
-      detalle: error.message 
+    res.status(500).json({
+      error: 'Error al procesar la inscripción'
     });
   }
 });
@@ -122,12 +127,10 @@ router.post('/:id/inscripcion-gratuita', auth, async (req, res) => {
 // ========================================
 // 🆕 VERIFICAR CERTIFICADO (PÚBLICO - PARA QR CODE) ✅
 // ========================================
-router.get('/verificar-certificado/:codigo', async (req, res) => {
+router.get('/verificar-certificado/:codigo', limitadorLogin, async (req, res) => {
   try {
     const { codigo } = req.params;
-    
-    console.log('🔍 Buscando certificado con código:', codigo);
-    
+
     // Buscar usuario que tenga ese código de certificado
     const usuario = await Usuario.findOne({
       'cursosComprados': {
@@ -137,35 +140,26 @@ router.get('/verificar-certificado/:codigo', async (req, res) => {
         }
       }
     }).select('nombre cursosComprados');
-    
-    console.log('👤 Usuario encontrado:', usuario ? usuario.nombre : 'NO');
-    
+
     if (!usuario) {
-      console.log('❌ No se encontró usuario con ese certificado');
       return res.status(404).json({ error: 'Certificado no encontrado' });
     }
-    
+
     // Encontrar el curso específico con ese código
     const cursoComprado = usuario.cursosComprados.find(
-      c => c.certificado && 
+      c => c.certificado &&
            c.certificado.codigoCertificado === codigo &&
            c.completado === true
     );
-    
-    console.log('📜 Curso comprado:', cursoComprado ? 'ENCONTRADO' : 'NO ENCONTRADO');
-    
+
     if (!cursoComprado) {
-      console.log('❌ No se encontró el curso en cursosComprados');
       return res.status(404).json({ error: 'Certificado no válido' });
     }
-    
+
     // Obtener información del curso
     const curso = await Curso.findById(cursoComprado.curso).select('titulo categoria duracion');
-    
-    console.log('🎓 Curso:', curso ? curso.titulo : 'NO ENCONTRADO');
-    
+
     if (!curso) {
-      console.log('❌ No se encontró el curso en la colección Cursos');
       return res.status(404).json({ error: 'Curso asociado no encontrado' });
     }
     
@@ -178,15 +172,12 @@ router.get('/verificar-certificado/:codigo', async (req, res) => {
       categoria: curso.categoria || 'General',
       fechaGeneracion: cursoComprado.certificado.fechaGeneracion || cursoComprado.fechaCompletado
     };
-    
-    console.log('✅ Certificado verificado exitosamente');
-    
+
     res.json(response);
   } catch (error) {
     console.error('❌ Error verificando certificado:', error);
-    res.status(500).json({ 
-      error: 'Error al verificar el certificado',
-      detalle: error.message 
+    res.status(500).json({
+      error: 'Error al verificar el certificado'
     });
   }
 });
@@ -391,9 +382,8 @@ router.get('/:id/certificado', auth, async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Error obteniendo certificado:', error);
-    res.status(500).json({ 
-      error: 'Error al generar el certificado',
-      detalle: error.message 
+    res.status(500).json({
+      error: 'Error al generar el certificado'
     });
   }
 });
@@ -406,10 +396,11 @@ router.get('/:id', async (req, res) => {
     if (!curso || !curso.activo) {
       return res.status(404).json({ error: 'Curso no encontrado' });
     }
-    
+
     res.json(curso);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Error obteniendo curso:', error);
+    res.status(500).json({ error: 'Error al obtener el curso' });
   }
 });
 

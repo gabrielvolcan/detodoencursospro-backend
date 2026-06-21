@@ -69,7 +69,7 @@ router.post('/crear-checkout', auth, async (req, res) => {
     res.json({ sessionId: session.id, url: session.url });
   } catch (error) {
     console.error('Error creando checkout:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Error al crear el checkout' });
   }
 });
 
@@ -78,11 +78,23 @@ router.get('/verificar-pago/:sessionId', auth, async (req, res) => {
   try {
     const session = await stripe.checkout.sessions.retrieve(req.params.sessionId);
 
+    // Verificar que la sesión pertenezca al usuario autenticado (evita que un
+    // tercero dispare/consulte el fulfillment de la compra de otro usuario).
+    if (session.metadata?.usuarioId !== req.usuario._id.toString()) {
+      return res.status(403).json({ error: 'No autorizado' });
+    }
+
     if (session.payment_status === 'paid') {
       const compra = await Compra.findOne({ stripeSessionId: session.id });
 
       if (!compra) {
         return res.status(404).json({ error: 'Compra no encontrada' });
+      }
+
+      // Verificar que el monto pagado coincida con el total de la compra.
+      if (typeof session.amount_total === 'number' &&
+          session.amount_total !== Math.round(compra.total * 100)) {
+        return res.status(400).json({ error: 'El monto pagado no coincide con la compra' });
       }
 
       // Si ya fue procesada, retornar
@@ -130,7 +142,7 @@ router.get('/verificar-pago/:sessionId', auth, async (req, res) => {
     }
   } catch (error) {
     console.error('Error verificando pago:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Error al verificar el pago' });
   }
 });
 
@@ -173,7 +185,8 @@ router.get('/mis-compras', auth, async (req, res) => {
 
     res.json(compras);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Error obteniendo compras:', error);
+    res.status(500).json({ error: 'Error al obtener las compras' });
   }
 });
 

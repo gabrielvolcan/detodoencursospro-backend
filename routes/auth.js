@@ -3,6 +3,11 @@ const router = express.Router();
 const Usuario = require('../models/Usuario');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
+
+// Hash dummy fijo para igualar el tiempo de respuesta cuando el usuario no existe
+// (mitiga enumeración de usuarios por timing). Es un hash bcrypt válido arbitrario.
+const DUMMY_HASH = '$2a$10$CwTycUXWue0Thq9StjUM0uJ8DvfJ7gN5xT3vV7gqU2k1pZ7v5K1S';
 const { auth } = require('../middleware/auth');
 const { enviarEmailVerificacion, enviarEmailRecuperacion } = require('../services/emailService');
 const {
@@ -57,8 +62,9 @@ router.post('/registro', limitadorRegistro, async (req, res) => {
       return res.status(400).json({ error: 'La contraseña debe contener al menos un carácter especial' });
     }
 
-    // Generar token de verificación
-    const tokenVerificacion = crypto.randomBytes(32).toString('hex');
+    // Generar token de verificación (plano para el email, hash sha256 en BD)
+    const tokenPlano = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(tokenPlano).digest('hex');
 
     // Crear nuevo usuario
     const usuario = new Usuario({
@@ -67,7 +73,7 @@ router.post('/registro', limitadorRegistro, async (req, res) => {
       password,
       telefono: telefono || '',
       emailVerificado: false,
-      tokenVerificacion,
+      tokenVerificacion: tokenHash,
       tokenVerificacionExpira: Date.now() + 24 * 60 * 60 * 1000 // 24 horas
     });
 
@@ -114,14 +120,14 @@ router.post('/registro', limitadorRegistro, async (req, res) => {
       cursoGratuitoInscrito: !!cursoGratuitoId
     });
 
-    // 📧 ENVIAR EMAIL EN BACKGROUND
-    enviarEmailVerificacion(email, nombre, tokenVerificacion).catch(err => 
+    // 📧 ENVIAR EMAIL EN BACKGROUND (se envía el token PLANO)
+    enviarEmailVerificacion(email, nombre, tokenPlano).catch(err =>
       console.error('❌ Error enviando email de verificación:', err)
     );
 
   } catch (error) {
     console.error('❌ Error en registro:', error);
-    res.status(400).json({ error: error.message });
+    res.status(400).json({ error: 'No se pudo completar el registro' });
   }
 });
 
@@ -130,8 +136,10 @@ router.post('/registro', limitadorRegistro, async (req, res) => {
 // ========================================
 router.get('/verificar-email/:token', async (req, res) => {
   try {
+    // Hashear el token recibido para buscar por el hash almacenado en BD
+    const tokenHash = crypto.createHash('sha256').update(req.params.token).digest('hex');
     const usuario = await Usuario.findOne({
-      tokenVerificacion: req.params.token,
+      tokenVerificacion: tokenHash,
       tokenVerificacionExpira: { $gt: Date.now() }
     });
 
@@ -146,7 +154,8 @@ router.get('/verificar-email/:token', async (req, res) => {
 
     res.json({ mensaje: 'Email verificado exitosamente' });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Error verificando email:', error);
+    res.status(500).json({ error: 'Error al verificar el email' });
   }
 });
 
@@ -165,9 +174,11 @@ router.post('/login', limitadorLogin, async (req, res) => {
       return res.status(401).json({ error: 'Credenciales inválidas' });
     }
 
-    // Buscar usuario
-    const usuario = await Usuario.findOne({ email: email.toLowerCase() });
+    // Buscar usuario (incluye password, que es select:false por defecto)
+    const usuario = await Usuario.findOne({ email: email.toLowerCase() }).select('+password');
     if (!usuario) {
+      // Comparación dummy para igualar el tiempo de respuesta (evita timing enumeration)
+      await bcrypt.compare(password, DUMMY_HASH);
       return res.status(401).json({ error: 'Credenciales inválidas' });
     }
 
@@ -187,6 +198,7 @@ router.post('/login', limitadorLogin, async (req, res) => {
 
     // Generar token
     const token = jwt.sign({ id: usuario._id }, process.env.JWT_SECRET, {
+      algorithm: 'HS256',
       expiresIn: '30d'
     });
 
@@ -201,7 +213,8 @@ router.post('/login', limitadorLogin, async (req, res) => {
       token
     });
   } catch (error) {
-    res.status(400).json({ error: error.message });
+    console.error('Error en login:', error);
+    res.status(400).json({ error: 'No se pudo iniciar sesión' });
   }
 });
 
@@ -222,22 +235,23 @@ router.post('/recuperar-contrasena', limitadorRecuperacion, async (req, res) => 
       return res.json({ mensaje: 'Si el email existe, recibirás instrucciones para recuperar tu contraseña.' });
     }
 
-    // Generar token de recuperación
-    const tokenRecuperacion = crypto.randomBytes(32).toString('hex');
-    usuario.resetPasswordToken = tokenRecuperacion;
+    // Generar token de recuperación (plano para el email, hash sha256 en BD)
+    const tokenPlano = crypto.randomBytes(32).toString('hex');
+    usuario.resetPasswordToken = crypto.createHash('sha256').update(tokenPlano).digest('hex');
     usuario.resetPasswordExpires = Date.now() + 1 * 60 * 60 * 1000; // 1 hora
 
     await usuario.save();
 
     res.json({ mensaje: 'Si el email existe, recibirás instrucciones para recuperar tu contraseña.' });
 
-    // 📧 ENVIAR EMAIL EN BACKGROUND
-    enviarEmailRecuperacion(email, usuario.nombre, tokenRecuperacion).catch(err => 
+    // 📧 ENVIAR EMAIL EN BACKGROUND (se envía el token PLANO)
+    enviarEmailRecuperacion(email, usuario.nombre, tokenPlano).catch(err =>
       console.error('❌ Error enviando email de recuperación:', err)
     );
 
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Error en recuperación:', error);
+    res.status(500).json({ error: 'Error al procesar la solicitud' });
   }
 });
 
@@ -247,6 +261,10 @@ router.post('/recuperar-contrasena', limitadorRecuperacion, async (req, res) => 
 router.post('/restablecer-contrasena/:token', async (req, res) => {
   try {
     const { password } = req.body;
+
+    if (!password || typeof password !== 'string') {
+      return res.status(400).json({ error: 'La contraseña es obligatoria' });
+    }
 
     // Validar contraseña fuerte
     if (password.length < 8) {
@@ -265,8 +283,10 @@ router.post('/restablecer-contrasena/:token', async (req, res) => {
       return res.status(400).json({ error: 'La contraseña debe contener al menos un carácter especial' });
     }
 
+    // Hashear el token recibido para buscar por el hash almacenado en BD
+    const tokenHash = crypto.createHash('sha256').update(req.params.token).digest('hex');
     const usuario = await Usuario.findOne({
-      resetPasswordToken: req.params.token,
+      resetPasswordToken: tokenHash,
       resetPasswordExpires: { $gt: Date.now() }
     });
 
@@ -282,7 +302,8 @@ router.post('/restablecer-contrasena/:token', async (req, res) => {
 
     res.json({ mensaje: 'Contraseña restablecida exitosamente' });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Error restableciendo contraseña:', error);
+    res.status(500).json({ error: 'Error al restablecer la contraseña' });
   }
 });
 
@@ -297,7 +318,8 @@ router.get('/perfil', auth, async (req, res) => {
     
     res.json(usuario);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Error obteniendo perfil:', error);
+    res.status(500).json({ error: 'Error al obtener el perfil' });
   }
 });
 
@@ -326,7 +348,8 @@ router.patch('/perfil', auth, async (req, res) => {
       }
     });
   } catch (error) {
-    res.status(400).json({ error: error.message });
+    console.error('Error actualizando perfil:', error);
+    res.status(400).json({ error: 'Error al actualizar el perfil' });
   }
 });
 
@@ -351,7 +374,7 @@ router.get('/usuarios/mis-cursos', auth, async (req, res) => {
     res.json(cursosValidos);
   } catch (error) {
     console.error('❌ Error obteniendo cursos:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Error al obtener los cursos' });
   }
 });
 

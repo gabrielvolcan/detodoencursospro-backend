@@ -1,6 +1,7 @@
 const nodemailer = require('nodemailer');
 const Usuario = require('../models/Usuario');
 const Curso = require('../models/Curso');
+const { escaparHtml } = require('../middleware/security');
 
 // Configurar transporter (usa tu configuración existente)
 const transporter = nodemailer.createTransport({
@@ -20,11 +21,11 @@ const plantillas = {
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <h2 style="color: #00ff88;">¡Nuevo Curso Disponible!</h2>
-        <h3>${curso.titulo}</h3>
-        <p>${curso.descripcionCorta}</p>
-        <p><strong>Categoría:</strong> ${curso.categoria}</p>
-        <p><strong>Nivel:</strong> ${curso.nivel}</p>
-        <a href="${process.env.FRONTEND_URL}/curso/${curso._id}" 
+        <h3>${escaparHtml(curso.titulo)}</h3>
+        <p>${escaparHtml(curso.descripcionCorta)}</p>
+        <p><strong>Categoría:</strong> ${escaparHtml(curso.categoria)}</p>
+        <p><strong>Nivel:</strong> ${escaparHtml(curso.nivel)}</p>
+        <a href="${process.env.FRONTEND_URL}/curso/${curso._id}"
            style="display: inline-block; background: #00ff88; color: #000; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">
           Ver Curso
         </a>
@@ -37,7 +38,7 @@ const plantillas = {
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <h2 style="color: #00ff88;">¡Oferta Especial!</h2>
-        <p>Aprovecha nuestro descuento del <strong>${porcentaje}%</strong> en cursos seleccionados.</p>
+        <p>Aprovecha nuestro descuento del <strong>${escaparHtml(porcentaje)}%</strong> en cursos seleccionados.</p>
         <p>Esta oferta es por tiempo limitado. ¡No te la pierdas!</p>
         <a href="${process.env.FRONTEND_URL}/cursos" 
            style="display: inline-block; background: #00ff88; color: #000; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">
@@ -52,7 +53,7 @@ const plantillas = {
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <h2 style="color: #00ff88;">¡Contenido Nuevo Agregado!</h2>
-        <p>Hemos actualizado el curso <strong>${curso.titulo}</strong> con nuevo contenido.</p>
+        <p>Hemos actualizado el curso <strong>${escaparHtml(curso.titulo)}</strong> con nuevo contenido.</p>
         <p>Ve a tu área de estudiante para ver las novedades.</p>
         <a href="${process.env.FRONTEND_URL}/aprender/${curso._id}" 
            style="display: inline-block; background: #00ff88; color: #000; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">
@@ -67,7 +68,7 @@ const plantillas = {
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <img src="${process.env.FRONTEND_URL}/images/letras_y_eslogan.webp" alt="Detodo Cursos" style="max-width: 200px; margin-bottom: 20px;">
-        <div style="white-space: pre-wrap;">${mensaje}</div>
+        <div style="white-space: pre-wrap;">${escaparHtml(mensaje)}</div>
         <hr style="margin: 30px 0; border: none; border-top: 1px solid #ddd;">
         <p style="color: #666; font-size: 12px;">
           Este email fue enviado desde Detodo Cursos.<br>
@@ -157,11 +158,10 @@ const enviarEmailMasivo = async (opciones) => {
         })
         .then(() => {
           enviados++;
-          console.log(`✅ Email enviado a ${usuario.email}`);
         })
         .catch((error) => {
           errores++;
-          console.error(`❌ Error enviando a ${usuario.email}:`, error.message);
+          console.error('❌ Error enviando un email del lote:', error.message);
         })
       );
 

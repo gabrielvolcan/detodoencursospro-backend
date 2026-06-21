@@ -133,20 +133,28 @@ const poblarDB = async () => {
     await Curso.insertMany(cursosEjemplo);
     console.log(`✅ ${cursosEjemplo.length} cursos creados exitosamente`);
 
-    // Verificar si existe un admin, si no, crear uno
-    let admin = await Usuario.findOne({ email: 'admin@securityacademy.com' });
-    
-    if (!admin) {
-      admin = new Usuario({
-        nombre: 'Administrador',
-        email: 'admin@securityacademy.com',
-        password: 'admin123',
-        rol: 'admin'
-      });
-      await admin.save();
-      console.log('✅ Usuario admin creado');
-      console.log('   Email: admin@securityacademy.com');
-      console.log('   Password: admin123');
+    // Crear admin SOLO desde variables de entorno. Nunca credenciales hardcodeadas.
+    const ADMIN_EMAIL = process.env.SEED_ADMIN_EMAIL;
+    const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD;
+
+    if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
+      console.log('⚠️  SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD no definidos: se omite la creación del admin.');
+    } else {
+      let admin = await Usuario.findOne({ email: ADMIN_EMAIL.toLowerCase() });
+
+      if (!admin) {
+        admin = new Usuario({
+          nombre: 'Administrador',
+          email: ADMIN_EMAIL.toLowerCase(),
+          password: ADMIN_PASSWORD, // se hashea en el pre-save del modelo
+          rol: 'admin',
+          emailVerificado: true
+        });
+        await admin.save();
+        console.log('✅ Usuario admin creado:', ADMIN_EMAIL.toLowerCase());
+      } else {
+        console.log('ℹ️  El admin ya existe, no se recrea.');
+      }
     }
 
     console.log('\n🎉 Base de datos poblada exitosamente!');

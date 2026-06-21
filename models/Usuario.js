@@ -16,7 +16,13 @@ const usuarioSchema = new mongoose.Schema({
   },
   password: {
     type: String,
-    required: true
+    required: true,
+    select: false // No se devuelve por defecto; usar .select('+password') donde haga falta
+  },
+  // Marca temporal del último cambio de contraseña. Los JWT emitidos antes
+  // de esta fecha se consideran inválidos (invalidación de sesión).
+  passwordChangedAt: {
+    type: Date
   },
   telefono: {
     type: String,
@@ -125,6 +131,8 @@ const usuarioSchema = new mongoose.Schema({
 usuarioSchema.pre('save', async function(next) {
   if (!this.isModified('password')) return next();
   this.password = await bcrypt.hash(this.password, 10);
+  // Registrar el momento del cambio (1s atrás para evitar carreras con el iat del token).
+  this.passwordChangedAt = new Date(Date.now() - 1000);
   next();
 });
 

@@ -6,29 +6,45 @@ const helmet = require('helmet');
 const mongoSanitize = require('express-mongo-sanitize');
 const { limitadorGeneral } = require('./middleware/security');
 
+// ========================================
+// 🚨 VALIDACIÓN DE VARIABLES DE ENTORNO OBLIGATORIAS
+// ========================================
+if (!process.env.JWT_SECRET || !process.env.MONGODB_URI) {
+  console.error('FALTAN variables de entorno obligatorias: JWT_SECRET y/o MONGODB_URI');
+  process.exit(1);
+}
+
 const app = express();
 const emailMasivoRoutes = require('./routes/emailMasivo');
 
+// Confiar en el primer proxy (necesario para rate limiting detrás de proxy/Vercel)
+app.set('trust proxy', 1);
+
 // ========================================
-// MIDDLEWARE CORS - ACEPTA VERCEL + DOMINIO PERSONALIZADO
+// MIDDLEWARE CORS - LISTA BLANCA EXACTA
 // ========================================
 app.use(cors({
   origin: function(origin, callback) {
-    // Permitir sin origin (mobile apps, Postman, etc)
-    if (!origin) return callback(null, true);
-    
-    // Lista de orígenes permitidos
+    // Rechazar requests sin origin en rutas con credenciales
+    if (!origin) return callback(null, false);
+
+    // Lista blanca exacta de orígenes permitidos
     const allowedOrigins = [
       'http://localhost:5173',
       'https://www.detodoencursos.com',
       'https://detodoencursos.com'
     ];
-    
-    // Permitir todas las URLs de Vercel (*.vercel.app)
-    if (origin.includes('.vercel.app') || allowedOrigins.includes(origin)) {
+    if (process.env.FRONTEND_URL) {
+      allowedOrigins.push(process.env.FRONTEND_URL);
+    }
+
+    // Previews de Vercel SOLO del propio proyecto (regex anclada)
+    const vercelPreview = /^https:\/\/detodoencursospro[a-z0-9-]*\.vercel\.app$/;
+
+    if (allowedOrigins.includes(origin) || vercelPreview.test(origin)) {
       return callback(null, true);
     }
-    
+
     callback(new Error('Not allowed by CORS'));
   },
   credentials: true
@@ -38,10 +54,8 @@ app.use(cors({
 // 🛡️ SEGURIDAD
 // ========================================
 
-// Headers de seguridad HTTP (XSS, clickjacking, MIME sniffing, etc.)
-app.use(helmet({
-  crossOriginResourcePolicy: { policy: 'cross-origin' } // Permite imágenes desde otros dominios
-}));
+// Headers de seguridad HTTP (CSP, HSTS, XSS, clickjacking, MIME sniffing, etc.)
+app.use(helmet());
 
 // Rate limiting general — 200 req / IP / 15min
 app.use('/api/', limitadorGeneral);
@@ -60,8 +74,8 @@ app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 // Sanitizar inputs contra inyección NoSQL (ej: { "$gt": "" } en email)
 app.use(mongoSanitize());
 
-// Servir archivos estáticos (comprobantes)
-app.use('/uploads', express.static('uploads'));
+// NOTA: Los comprobantes (PII) ya NO se sirven públicamente.
+// Se exponen únicamente vía GET /api/pagos-manual/comprobante/:compraId (autenticado).
 
 // ========================================
 // CONEXIÓN A MONGODB
@@ -142,13 +156,17 @@ app.use((err, req, res, next) => {
 // ========================================
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
-  console.log('');
-  console.log('🚀========================================');
-  console.log(`   Servidor corriendo en puerto ${PORT}`);
-  console.log(`   Ambiente: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`   MongoDB: Conectado`);
-  console.log(`   CORS: Configurado para Vercel + detodoencursos.com`);
-  console.log('========================================🚀');
-  console.log('');
-});
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log('');
+    console.log('🚀========================================');
+    console.log(`   Servidor corriendo en puerto ${PORT}`);
+    console.log(`   Ambiente: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`   MongoDB: Conectado`);
+    console.log(`   CORS: Configurado para Vercel + detodoencursos.com`);
+    console.log('========================================🚀');
+    console.log('');
+  });
+}
+
+module.exports = app;

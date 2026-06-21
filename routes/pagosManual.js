@@ -9,19 +9,33 @@ const { limitadorSubidaArchivos } = require('../middleware/security');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
+
+// Carpeta absoluta de comprobantes (usada también para guardar contra path traversal)
+const COMPROBANTES_DIR = path.join(__dirname, '..', 'uploads', 'comprobantes');
 
 // Crear carpeta si no existe
-if (!fs.existsSync('uploads/comprobantes')) {
-  fs.mkdirSync('uploads/comprobantes', { recursive: true });
+if (!fs.existsSync(COMPROBANTES_DIR)) {
+  fs.mkdirSync(COMPROBANTES_DIR, { recursive: true });
 }
+
+// Mapa mimetype validado -> extensión segura (la extensión NO se deriva del nombre del usuario)
+const MIME_EXT = {
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp',
+  'image/gif': '.gif'
+};
 
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, 'uploads/comprobantes/');
+    cb(null, COMPROBANTES_DIR);
   },
   filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, 'comprobante-' + uniqueSuffix + path.extname(file.originalname));
+    // Nombre NO adivinable + extensión derivada del mimetype VALIDADO
+    const nombre = crypto.randomBytes(16).toString('hex');
+    const ext = MIME_EXT[file.mimetype] || '.bin';
+    cb(null, 'comprobante-' + nombre + ext);
   }
 });
 
@@ -31,7 +45,7 @@ const upload = multer({
   fileFilter: function (req, file, cb) {
     const allowedTypes = /jpeg|jpg|png|gif|webp/;
     const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-    const mimetype = allowedTypes.test(file.mimetype);
+    const mimetype = allowedTypes.test(file.mimetype) && MIME_EXT[file.mimetype] !== undefined;
     if (mimetype && extname) {
       return cb(null, true);
     }
@@ -39,10 +53,50 @@ const upload = multer({
   }
 });
 
+// Valida los magic bytes reales del archivo subido (defensa contra mimetype/extensión falsificados).
+// Devuelve true si la firma coincide con jpg/png/webp/gif.
+function validarMagicBytes(filePath) {
+  let fd;
+  try {
+    fd = fs.openSync(filePath, 'r');
+    const buf = Buffer.alloc(12);
+    fs.readSync(fd, buf, 0, 12, 0);
+
+    // JPEG: FF D8 FF
+    if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return true;
+    // PNG: 89 50 4E 47 0D 0A 1A 0A
+    if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47 &&
+        buf[4] === 0x0d && buf[5] === 0x0a && buf[6] === 0x1a && buf[7] === 0x0a) return true;
+    // GIF: 47 49 46 38 (GIF8)
+    if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x38) return true;
+    // WEBP: "RIFF" .... "WEBP"
+    if (buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46 &&
+        buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50) return true;
+
+    return false;
+  } catch (e) {
+    return false;
+  } finally {
+    if (fd !== undefined) {
+      try { fs.closeSync(fd); } catch (e) { /* ignore */ }
+    }
+  }
+}
+
 // Crear orden de compra manual (sin Stripe)
 router.post('/crear-orden-manual', auth, async (req, res) => {
   try {
     const { cursosIds, metodoPago, moneda, pais } = req.body;
+
+    // Validar que metodoPago y sus campos existan (evita crash 500 si vienen undefined)
+    if (!metodoPago || typeof metodoPago !== 'object' || !metodoPago.tipo) {
+      return res.status(400).json({ error: 'Método de pago no válido' });
+    }
+
+    // Validar que cursosIds sea un array no vacío
+    if (!Array.isArray(cursosIds) || cursosIds.length === 0) {
+      return res.status(400).json({ error: 'Debes seleccionar al menos un curso' });
+    }
 
     // Validar que pais sea válido
     const paisesValidos = ['peru', 'chile', 'argentina', 'uruguay', 'venezuela', 'internacional'];
@@ -155,13 +209,22 @@ router.post('/subir-comprobante/:compraId', auth, limitadorSubidaArchivos, uploa
       return res.status(400).json({ error: 'No se recibió ningún archivo' });
     }
 
+    // Validar los magic bytes REALES del archivo (defensa contra mimetype/extensión falsificados).
+    // Si no coincide con una imagen válida, se elimina el archivo y se rechaza.
+    if (!validarMagicBytes(req.file.path)) {
+      try { fs.unlinkSync(req.file.path); } catch (e) { /* ignore */ }
+      return res.status(400).json({ error: 'El archivo no es una imagen válida' });
+    }
+
     const compra = await Compra.findById(req.params.compraId);
 
     if (!compra) {
+      try { fs.unlinkSync(req.file.path); } catch (e) { /* ignore */ }
       return res.status(404).json({ error: 'Compra no encontrada' });
     }
 
     if (compra.usuario.toString() !== req.usuario._id.toString()) {
+      try { fs.unlinkSync(req.file.path); } catch (e) { /* ignore */ }
       return res.status(403).json({ error: 'No autorizado' });
     }
 
@@ -194,6 +257,46 @@ router.post('/subir-comprobante/:compraId', auth, limitadorSubidaArchivos, uploa
   } catch (error) {
     console.error('Error subiendo comprobante:', error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Servir el comprobante de pago (PII) — SOLO al dueño de la compra o a un admin.
+// Los comprobantes ya NO se sirven públicamente desde /uploads.
+router.get('/comprobante/:compraId', auth, async (req, res) => {
+  try {
+    const compra = await Compra.findById(req.params.compraId);
+
+    if (!compra) {
+      return res.status(404).json({ error: 'Compra no encontrada' });
+    }
+
+    // Autorización: dueño de la compra o admin
+    const esDueno = compra.usuario.toString() === req.usuario._id.toString();
+    if (!esDueno && req.usuario.rol !== 'admin') {
+      return res.status(403).json({ error: 'No autorizado' });
+    }
+
+    if (!compra.comprobante?.nombreArchivo) {
+      return res.status(404).json({ error: 'Esta compra no tiene comprobante' });
+    }
+
+    // Resolver la ruta de forma segura (defensa contra path traversal):
+    // se toma solo el nombre base y se confirma que queda dentro de COMPROBANTES_DIR.
+    const nombreArchivo = path.basename(compra.comprobante.nombreArchivo);
+    const rutaArchivo = path.join(COMPROBANTES_DIR, nombreArchivo);
+
+    if (!rutaArchivo.startsWith(COMPROBANTES_DIR + path.sep)) {
+      return res.status(400).json({ error: 'Ruta de archivo no válida' });
+    }
+
+    if (!fs.existsSync(rutaArchivo)) {
+      return res.status(404).json({ error: 'Archivo no encontrado' });
+    }
+
+    return res.sendFile(rutaArchivo);
+  } catch (error) {
+    console.error('Error sirviendo comprobante:', error);
+    res.status(500).json({ error: 'Error al obtener el comprobante' });
   }
 });
 
