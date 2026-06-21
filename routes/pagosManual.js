@@ -81,17 +81,26 @@ router.post('/crear-orden-manual', auth, async (req, res) => {
     let total = 0;
     let monedaFinal = moneda || 'USD';
 
+    // Tasas oficiales (mismas que el modelo Curso) y moneda por país.
+    const TASAS = { peru: 3.36, chile: 894, argentina: 1505, uruguay: 38.9, venezuela: 50, internacional: 1 };
+    const MONEDA_PAIS = { peru: 'PEN', chile: 'CLP', argentina: 'ARS', uruguay: 'UYU', venezuela: 'VES', internacional: 'USD' };
+
     // Helper: precio de un ítem (curso o producto) según el país.
     // Devuelve { precio, moneda } o null si no tiene precio configurado.
     const calcularPrecio = (item) => {
       if (item.precios && item.precios[paisNormalizado] && item.precios[paisNormalizado].monto != null) {
         return {
           precio: Number(item.precios[paisNormalizado].monto),
-          moneda: item.precios[paisNormalizado].moneda || 'USD'
+          moneda: item.precios[paisNormalizado].moneda || MONEDA_PAIS[paisNormalizado]
         };
       }
-      if (item.precioUSD) {
-        return { precio: Number(item.precioUSD), moneda: 'USD' };
+      // Sin precios por país: convertir precioUSD con la tasa oficial (igual que el frontend)
+      if (item.precioUSD != null && !isNaN(item.precioUSD)) {
+        const tasa = TASAS[paisNormalizado] || 1;
+        return {
+          precio: Math.round(Number(item.precioUSD) * tasa * 100) / 100,
+          moneda: MONEDA_PAIS[paisNormalizado] || 'USD'
+        };
       }
       return null;
     };
