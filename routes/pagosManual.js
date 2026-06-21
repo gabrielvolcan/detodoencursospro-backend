@@ -9,16 +9,7 @@ const { notificarNuevaCompra, notificarComprobanteSubido } = require('../service
 const { limitadorSubidaArchivos } = require('../middleware/security');
 const multer = require('multer');
 const path = require('path');
-const fs = require('fs');
 const crypto = require('crypto');
-
-// Carpeta absoluta de comprobantes (usada también para guardar contra path traversal)
-const COMPROBANTES_DIR = path.join(__dirname, '..', 'uploads', 'comprobantes');
-
-// Crear carpeta si no existe
-if (!fs.existsSync(COMPROBANTES_DIR)) {
-  fs.mkdirSync(COMPROBANTES_DIR, { recursive: true });
-}
 
 // Mapa mimetype validado -> extensión segura (la extensión NO se deriva del nombre del usuario)
 const MIME_EXT = {
@@ -28,20 +19,10 @@ const MIME_EXT = {
   'image/gif': '.gif'
 };
 
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, COMPROBANTES_DIR);
-  },
-  filename: function (req, file, cb) {
-    // Nombre NO adivinable + extensión derivada del mimetype VALIDADO
-    const nombre = crypto.randomBytes(16).toString('hex');
-    const ext = MIME_EXT[file.mimetype] || '.bin';
-    cb(null, 'comprobante-' + nombre + ext);
-  }
-});
-
+// Los comprobantes se guardan en MongoDB (persistentes entre redeploys).
+// multer mantiene el archivo en memoria; no se escribe a disco.
 const upload = multer({
-  storage: storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: function (req, file, cb) {
     const allowedTypes = /jpeg|jpg|png|gif|webp/;
@@ -54,34 +35,21 @@ const upload = multer({
   }
 });
 
-// Valida los magic bytes reales del archivo subido (defensa contra mimetype/extensión falsificados).
+// Valida los magic bytes reales del buffer subido (defensa contra mimetype/extensión falsificados).
 // Devuelve true si la firma coincide con jpg/png/webp/gif.
-function validarMagicBytes(filePath) {
-  let fd;
-  try {
-    fd = fs.openSync(filePath, 'r');
-    const buf = Buffer.alloc(12);
-    fs.readSync(fd, buf, 0, 12, 0);
-
-    // JPEG: FF D8 FF
-    if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return true;
-    // PNG: 89 50 4E 47 0D 0A 1A 0A
-    if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47 &&
-        buf[4] === 0x0d && buf[5] === 0x0a && buf[6] === 0x1a && buf[7] === 0x0a) return true;
-    // GIF: 47 49 46 38 (GIF8)
-    if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x38) return true;
-    // WEBP: "RIFF" .... "WEBP"
-    if (buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46 &&
-        buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50) return true;
-
-    return false;
-  } catch (e) {
-    return false;
-  } finally {
-    if (fd !== undefined) {
-      try { fs.closeSync(fd); } catch (e) { /* ignore */ }
-    }
-  }
+function validarMagicBytes(buf) {
+  if (!buf || buf.length < 12) return false;
+  // JPEG: FF D8 FF
+  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return true;
+  // PNG: 89 50 4E 47 0D 0A 1A 0A
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47 &&
+      buf[4] === 0x0d && buf[5] === 0x0a && buf[6] === 0x1a && buf[7] === 0x0a) return true;
+  // GIF: 47 49 46 38 (GIF8)
+  if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x38) return true;
+  // WEBP: "RIFF" .... "WEBP"
+  if (buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46 &&
+      buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50) return true;
+  return false;
 }
 
 // Crear orden de compra manual (sin Stripe)
@@ -220,29 +188,31 @@ router.post('/subir-comprobante/:compraId', auth, limitadorSubidaArchivos, uploa
     }
 
     // Validar los magic bytes REALES del archivo (defensa contra mimetype/extensión falsificados).
-    // Si no coincide con una imagen válida, se elimina el archivo y se rechaza.
-    if (!validarMagicBytes(req.file.path)) {
-      try { fs.unlinkSync(req.file.path); } catch (e) { /* ignore */ }
+    if (!validarMagicBytes(req.file.buffer)) {
       return res.status(400).json({ error: 'El archivo no es una imagen válida' });
     }
 
     const compra = await Compra.findById(req.params.compraId);
 
     if (!compra) {
-      try { fs.unlinkSync(req.file.path); } catch (e) { /* ignore */ }
       return res.status(404).json({ error: 'Compra no encontrada' });
     }
 
     if (compra.usuario.toString() !== req.usuario._id.toString()) {
-      try { fs.unlinkSync(req.file.path); } catch (e) { /* ignore */ }
       return res.status(403).json({ error: 'No autorizado' });
     }
 
-    const fileUrl = `/uploads/comprobantes/${req.file.filename}`;
+    // Nombre no adivinable + extensión derivada del mimetype validado
+    const ext = MIME_EXT[req.file.mimetype] || '.bin';
+    const nombreArchivo = 'comprobante-' + crypto.randomBytes(16).toString('hex') + ext;
+    // URL = endpoint autenticado que sirve la imagen desde Mongo
+    const fileUrl = `/api/pagos-manual/comprobante/${compra._id}`;
 
     compra.comprobante = {
       url: fileUrl,
-      nombreArchivo: req.file.filename,
+      nombreArchivo,
+      mimetype: req.file.mimetype,
+      data: req.file.buffer, // guardado persistente en MongoDB
       fechaSubida: new Date()
     };
     compra.estadoPago = 'en_revision';
@@ -259,6 +229,9 @@ router.post('/subir-comprobante/:compraId', auth, limitadorSubidaArchivos, uploa
       compraId: compra._id
     });
 
+    // No devolver el buffer de la imagen en la respuesta
+    compra.comprobante.data = undefined;
+
     res.json({
       mensaje: 'Comprobante subido exitosamente. Tu pago está en revisión.',
       compra,
@@ -266,15 +239,16 @@ router.post('/subir-comprobante/:compraId', auth, limitadorSubidaArchivos, uploa
     });
   } catch (error) {
     console.error('Error subiendo comprobante:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Error al subir el comprobante' });
   }
 });
 
 // Servir el comprobante de pago (PII) — SOLO al dueño de la compra o a un admin.
-// Los comprobantes ya NO se sirven públicamente desde /uploads.
+// La imagen vive en MongoDB (persistente); se trae explícitamente el campo data.
 router.get('/comprobante/:compraId', auth, async (req, res) => {
   try {
-    const compra = await Compra.findById(req.params.compraId);
+    const compra = await Compra.findById(req.params.compraId)
+      .select('+comprobante.data');
 
     if (!compra) {
       return res.status(404).json({ error: 'Compra no encontrada' });
@@ -286,24 +260,13 @@ router.get('/comprobante/:compraId', auth, async (req, res) => {
       return res.status(403).json({ error: 'No autorizado' });
     }
 
-    if (!compra.comprobante?.nombreArchivo) {
+    if (!compra.comprobante?.data) {
       return res.status(404).json({ error: 'Esta compra no tiene comprobante' });
     }
 
-    // Resolver la ruta de forma segura (defensa contra path traversal):
-    // se toma solo el nombre base y se confirma que queda dentro de COMPROBANTES_DIR.
-    const nombreArchivo = path.basename(compra.comprobante.nombreArchivo);
-    const rutaArchivo = path.join(COMPROBANTES_DIR, nombreArchivo);
-
-    if (!rutaArchivo.startsWith(COMPROBANTES_DIR + path.sep)) {
-      return res.status(400).json({ error: 'Ruta de archivo no válida' });
-    }
-
-    if (!fs.existsSync(rutaArchivo)) {
-      return res.status(404).json({ error: 'Archivo no encontrado' });
-    }
-
-    return res.sendFile(rutaArchivo);
+    res.set('Content-Type', compra.comprobante.mimetype || 'image/jpeg');
+    res.set('Cache-Control', 'private, no-store');
+    return res.send(compra.comprobante.data);
   } catch (error) {
     console.error('Error sirviendo comprobante:', error);
     res.status(500).json({ error: 'Error al obtener el comprobante' });

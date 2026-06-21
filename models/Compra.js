@@ -68,6 +68,10 @@ const compraSchema = new mongoose.Schema({
   comprobante: {
     url: String,
     nombreArchivo: String,
+    mimetype: String,
+    // La imagen del comprobante se guarda en Mongo (persistente entre redeploys).
+    // select:false => NO se incluye en listados; solo se trae explícito al servirla.
+    data: { type: Buffer, select: false },
     fechaSubida: Date
   },
   stripePaymentId: {
