@@ -76,8 +76,8 @@ router.post('/:id/inscripcion-gratuita', auth, async (req, res) => {
       return res.status(404).json({ error: 'Curso no encontrado' });
     }
 
-    // Validación 2: El curso es realmente gratuito
-    if (!curso.esGratuito) {
+    // Validación 2: El curso es realmente gratuito (alineado con el frontend y el registro)
+    if (!(curso.esGratuito === true || curso.precioUSD === 0)) {
       return res.status(400).json({ error: 'Este curso no es gratuito' });
     }
 

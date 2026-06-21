@@ -4,6 +4,7 @@ const mongoose = require('mongoose');
 const Curso = require('../models/Curso');
 const Usuario = require('../models/Usuario');
 const Compra = require('../models/Compra');
+const Producto = require('../models/Producto');
 const { auth, esAdmin } = require('../middleware/auth');
 const { enviarEmailCompraAprobada, enviarEmailRechazo } = require('../services/emailService');
 const { notificarPagoAprobado, notificarPagoRechazado } = require('../services/telegramService');
@@ -11,17 +12,20 @@ const { notificarPagoAprobado, notificarPagoRechazado } = require('../services/t
 // Email del administrador principal (protegido). Configurable por entorno.
 const ADMIN_PRINCIPAL_EMAIL = (process.env.SEED_ADMIN_EMAIL || '').toLowerCase();
 
-// Acredita/desacredita los cursos de una compra al usuario según la transición de estado.
-// Centraliza la lógica para que todos los caminos de cambio de estado sean consistentes.
+// Acredita/desacredita los cursos Y productos de una compra al usuario según la
+// transición de estado. Centraliza la lógica para que todos los caminos sean consistentes.
 async function sincronizarCursosPorEstado(compra, estadoAnterior, estadoNuevo) {
   if (estadoAnterior === estadoNuevo) return;
 
   const usuario = await Usuario.findById(compra.usuario);
   if (!usuario) return;
 
-  // Pasa a aprobado -> acreditar cursos
+  const cursosCompra = compra.cursos || [];
+  const productosCompra = compra.productos || [];
+
+  // Pasa a aprobado -> acreditar cursos y productos
   if (estadoNuevo === 'aprobado' && estadoAnterior !== 'aprobado') {
-    for (const item of compra.cursos) {
+    for (const item of cursosCompra) {
       const cursoId = item.curso?._id || item.curso;
       const yaComprado = usuario.cursosComprados.some(
         c => c.curso.toString() === cursoId.toString()
@@ -37,12 +41,29 @@ async function sincronizarCursosPorEstado(compra, estadoAnterior, estadoNuevo) {
         await Curso.findByIdAndUpdate(cursoId, { $inc: { estudiantes: 1 } });
       }
     }
+
+    if (!usuario.productosComprados) usuario.productosComprados = [];
+    for (const item of productosCompra) {
+      const prodId = item.producto?._id || item.producto;
+      const yaComprado = usuario.productosComprados.some(
+        p => (p.producto?.toString() === prodId.toString()) && p.estadoPago === 'aprobado'
+      );
+      if (!yaComprado) {
+        usuario.productosComprados.push({
+          producto: prodId,
+          estadoPago: 'aprobado',
+          fechaCompra: new Date(),
+          precio: item.precio
+        });
+        await Producto.findByIdAndUpdate(prodId, { $inc: { totalCompradores: 1, totalVentas: 1 } });
+      }
+    }
     await usuario.save();
   }
 
-  // Sale de aprobado -> remover cursos de esta compra
+  // Sale de aprobado -> remover cursos y productos de esta compra
   if (estadoAnterior === 'aprobado' && estadoNuevo !== 'aprobado') {
-    for (const item of compra.cursos) {
+    for (const item of cursosCompra) {
       const cursoId = item.curso?._id || item.curso;
       const longitudPrevia = usuario.cursosComprados.length;
       usuario.cursosComprados = usuario.cursosComprados.filter(
@@ -50,6 +71,17 @@ async function sincronizarCursosPorEstado(compra, estadoAnterior, estadoNuevo) {
       );
       if (usuario.cursosComprados.length < longitudPrevia) {
         await Curso.findByIdAndUpdate(cursoId, { $inc: { estudiantes: -1 } });
+      }
+    }
+
+    for (const item of productosCompra) {
+      const prodId = item.producto?._id || item.producto;
+      const longitudPrevia = (usuario.productosComprados || []).length;
+      usuario.productosComprados = (usuario.productosComprados || []).filter(
+        p => p.producto?.toString() !== prodId.toString()
+      );
+      if (usuario.productosComprados.length < longitudPrevia) {
+        await Producto.findByIdAndUpdate(prodId, { $inc: { totalCompradores: -1, totalVentas: -1 } });
       }
     }
     await usuario.save();
@@ -226,6 +258,7 @@ router.get('/compras-pendientes', auth, esAdmin, async (req, res) => {
     })
       .populate('usuario', 'nombre email telefono')
       .populate('cursos.curso', 'titulo imagen precio')
+      .populate('productos.producto', 'titulo imagen')
       .sort({ createdAt: -1 });
 
     res.json(compras);
@@ -273,6 +306,24 @@ router.post('/aprobar-pago/:compraId', auth, esAdmin, async (req, res) => {
         await Curso.findByIdAndUpdate(item.curso._id, {
           $inc: { estudiantes: 1 }
         });
+      }
+    }
+
+    // Acreditar productos digitales de la compra
+    if (!usuario.productosComprados) usuario.productosComprados = [];
+    for (const item of (compra.productos || [])) {
+      const prodId = item.producto?._id || item.producto;
+      const yaComprado = usuario.productosComprados.some(
+        p => (p.producto?.toString() === prodId.toString()) && p.estadoPago === 'aprobado'
+      );
+      if (!yaComprado) {
+        usuario.productosComprados.push({
+          producto: prodId,
+          estadoPago: 'aprobado',
+          fechaCompra: new Date(),
+          precio: item.precio
+        });
+        await Producto.findByIdAndUpdate(prodId, { $inc: { totalCompradores: 1, totalVentas: 1 } });
       }
     }
 

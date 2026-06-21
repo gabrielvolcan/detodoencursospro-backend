@@ -3,6 +3,7 @@ const router = express.Router();
 const Curso = require('../models/Curso');
 const Usuario = require('../models/Usuario');
 const Compra = require('../models/Compra');
+const Producto = require('../models/Producto');
 const { auth } = require('../middleware/auth');
 const { notificarNuevaCompra, notificarComprobanteSubido } = require('../services/telegramService');
 const { limitadorSubidaArchivos } = require('../middleware/security');
@@ -86,73 +87,81 @@ function validarMagicBytes(filePath) {
 // Crear orden de compra manual (sin Stripe)
 router.post('/crear-orden-manual', auth, async (req, res) => {
   try {
-    const { cursosIds, metodoPago, moneda, pais } = req.body;
+    const { cursosIds, productosIds, metodoPago, moneda, pais } = req.body;
 
     // Validar que metodoPago y sus campos existan (evita crash 500 si vienen undefined)
     if (!metodoPago || typeof metodoPago !== 'object' || !metodoPago.tipo) {
       return res.status(400).json({ error: 'Método de pago no válido' });
     }
 
-    // Validar que cursosIds sea un array no vacío
-    if (!Array.isArray(cursosIds) || cursosIds.length === 0) {
-      return res.status(400).json({ error: 'Debes seleccionar al menos un curso' });
+    const cursosArr = Array.isArray(cursosIds) ? cursosIds : [];
+    const productosArr = Array.isArray(productosIds) ? productosIds : [];
+
+    // La orden debe tener al menos un curso o un producto
+    if (cursosArr.length === 0 && productosArr.length === 0) {
+      return res.status(400).json({ error: 'Debes seleccionar al menos un curso o producto' });
     }
 
     // Validar que pais sea válido
     const paisesValidos = ['peru', 'chile', 'argentina', 'uruguay', 'venezuela', 'internacional'];
     const paisNormalizado = pais ? pais.toLowerCase() : 'internacional';
-    
+
     if (!paisesValidos.includes(paisNormalizado)) {
       return res.status(400).json({ error: 'País no válido' });
     }
 
-    // Obtener cursos
-    const cursos = await Curso.find({ _id: { $in: cursosIds }, activo: true });
-
-    if (cursos.length !== cursosIds.length) {
-      return res.status(400).json({ error: 'Algunos cursos no están disponibles' });
-    }
-
-    // Calcular total según el país
     let total = 0;
     let monedaFinal = moneda || 'USD';
-    
+
+    // Helper: precio de un ítem (curso o producto) según el país.
+    // Devuelve { precio, moneda } o null si no tiene precio configurado.
+    const calcularPrecio = (item) => {
+      if (item.precios && item.precios[paisNormalizado] && item.precios[paisNormalizado].monto != null) {
+        return {
+          precio: Number(item.precios[paisNormalizado].monto),
+          moneda: item.precios[paisNormalizado].moneda || 'USD'
+        };
+      }
+      if (item.precioUSD) {
+        return { precio: Number(item.precioUSD), moneda: 'USD' };
+      }
+      return null;
+    };
+
+    // Cursos
+    const cursos = cursosArr.length
+      ? await Curso.find({ _id: { $in: cursosArr }, activo: true })
+      : [];
+    if (cursos.length !== cursosArr.length) {
+      return res.status(400).json({ error: 'Algunos cursos no están disponibles' });
+    }
     const cursosConPrecio = cursos.map(curso => {
-      let precioDelCurso;
-      
-      // Obtener precio según el país
-      if (curso.precios && curso.precios[paisNormalizado]) {
-        precioDelCurso = curso.precios[paisNormalizado].monto;
-        monedaFinal = curso.precios[paisNormalizado].moneda;
-      } 
-      // Fallback 1: usar precioUSD
-      else if (curso.precioUSD) {
-        precioDelCurso = curso.precioUSD;
-        monedaFinal = 'USD';
-      }
-      // Fallback 2: usar precio viejo
-      else if (curso.precio) {
-        precioDelCurso = curso.precio;
-        monedaFinal = 'USD';
-      }
-      // Fallback 3: error
-      else {
-        throw new Error(`El curso "${curso.titulo}" no tiene precio configurado`);
-      }
-      
-      total += precioDelCurso;
-      
-      return {
-        curso: curso._id,
-        precio: precioDelCurso,
-        moneda: monedaFinal
-      };
+      const p = calcularPrecio(curso);
+      if (!p) throw new Error(`El curso "${curso.titulo}" no tiene precio configurado`);
+      total += p.precio;
+      monedaFinal = p.moneda;
+      return { curso: curso._id, precio: p.precio, moneda: p.moneda };
+    });
+
+    // Productos digitales
+    const productos = productosArr.length
+      ? await Producto.find({ _id: { $in: productosArr }, activo: true })
+      : [];
+    if (productos.length !== productosArr.length) {
+      return res.status(400).json({ error: 'Algunos productos no están disponibles' });
+    }
+    const productosConPrecio = productos.map(prod => {
+      const p = calcularPrecio(prod);
+      if (!p) throw new Error(`El producto "${prod.titulo}" no tiene precio configurado`);
+      total += p.precio;
+      monedaFinal = p.moneda;
+      return { producto: prod._id, precio: p.precio, moneda: p.moneda };
     });
 
     // Validar que el total sea un número válido
     if (isNaN(total) || total <= 0) {
-      return res.status(400).json({ 
-        error: 'Error calculando el total. Verifica que los cursos tengan precios configurados.' 
+      return res.status(400).json({
+        error: 'Error calculando el total. Verifica que los ítems tengan precios configurados.'
       });
     }
 
@@ -160,6 +169,7 @@ router.post('/crear-orden-manual', auth, async (req, res) => {
     const compra = new Compra({
       usuario: req.usuario._id,
       cursos: cursosConPrecio,
+      productos: productosConPrecio,
       total: Math.round(total * 100) / 100, // Redondear a 2 decimales
       moneda: monedaFinal,
       pais: paisNormalizado,
@@ -179,14 +189,14 @@ router.post('/crear-orden-manual', auth, async (req, res) => {
 
     await compra.save();
 
-    // 📣 Notificar a Telegram
+    // 📣 Notificar a Telegram (cursos + productos)
     notificarNuevaCompra({
       nombre: req.usuario.nombre,
       email:  req.usuario.email,
       total:  compra.total,
       moneda: compra.moneda,
       metodo: metodoPago.nombre || metodoPago.tipo,
-      cursos: cursos.map(c => c.titulo),
+      cursos: [...cursos.map(c => c.titulo), ...productos.map(p => p.titulo)],
       pais:   paisNormalizado
     });
 
@@ -198,7 +208,7 @@ router.post('/crear-orden-manual', auth, async (req, res) => {
     });
   } catch (error) {
     console.error('Error creando orden:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Error al crear la orden' });
   }
 });
 
@@ -305,6 +315,7 @@ router.get('/mis-compras', auth, async (req, res) => {
   try {
     const compras = await Compra.find({ usuario: req.usuario._id })
       .populate('cursos.curso')
+      .populate('productos.producto')
       .sort({ createdAt: -1 });
 
     res.json(compras);
@@ -318,6 +329,7 @@ router.get('/compra/:id', auth, async (req, res) => {
   try {
     const compra = await Compra.findById(req.params.id)
       .populate('cursos.curso')
+      .populate('productos.producto')
       .populate('usuario', 'nombre email');
 
     if (!compra) {

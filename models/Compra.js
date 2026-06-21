@@ -21,13 +21,29 @@ const compraSchema = new mongoose.Schema({
       default: 'USD'
     }
   }],
+  // 📦 Productos digitales incluidos en la compra
+  productos: [{
+    producto: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Producto',
+      required: true
+    },
+    precio: {
+      type: Number,
+      required: true
+    },
+    moneda: {
+      type: String,
+      default: 'USD'
+    }
+  }],
   total: {
     type: Number,
     required: true
   },
   moneda: {
     type: String,
-    enum: ['USD', 'PEN', 'CLP', 'ARS', 'UYU'],
+    enum: ['USD', 'PEN', 'CLP', 'ARS', 'UYU', 'VES'],
     default: 'USD'
   },
   pais: {

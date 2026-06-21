@@ -9,6 +9,11 @@ const temaSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  // Contenido de texto/prompts para lecciones sin video
+  descripcion: {
+    type: String,
+    default: ''
+  },
   duracion: {
     type: String,
     default: ''

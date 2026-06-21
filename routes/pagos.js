@@ -98,12 +98,12 @@ router.get('/verificar-pago/:sessionId', auth, async (req, res) => {
       }
 
       // Si ya fue procesada, retornar
-      if (compra.estadoPago === 'completado') {
+      if (compra.estadoPago === 'aprobado') {
         return res.json({ mensaje: 'Pago ya procesado', compra });
       }
 
-      // Actualizar compra
-      compra.estadoPago = 'completado';
+      // Actualizar compra (estado unificado con el flujo manual)
+      compra.estadoPago = 'aprobado';
       compra.stripePaymentId = session.payment_intent;
       await compra.save();
 
@@ -176,9 +176,9 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
 // Obtener historial de compras del usuario
 router.get('/mis-compras', auth, async (req, res) => {
   try {
-    const compras = await Compra.find({ 
+    const compras = await Compra.find({
       usuario: req.usuario._id,
-      estadoPago: 'completado'
+      estadoPago: 'aprobado'
     })
     .populate('cursos.curso')
     .sort({ createdAt: -1 });
