@@ -46,11 +46,27 @@ router.get('/admin/todos', auth, esAdmin, async (req, res) => {
   try {
     const productos = await Producto.find()
       .sort({ createdAt: -1 });
-    
+
     res.json(productos);
   } catch (error) {
     console.error('Error obteniendo productos:', error);
     res.status(500).json({ mensaje: 'Error al obtener productos' });
+  }
+});
+
+// ========================================
+// 🔍 OBTENER UN PRODUCTO COMPLETO (Admin) — incluye archivoURL para editar
+// ========================================
+router.get('/admin/:id', auth, esAdmin, async (req, res) => {
+  try {
+    const producto = await Producto.findById(req.params.id);
+    if (!producto) {
+      return res.status(404).json({ mensaje: 'Producto no encontrado' });
+    }
+    res.json(producto);
+  } catch (error) {
+    console.error('Error obteniendo producto (admin):', error);
+    res.status(500).json({ mensaje: 'Error al obtener producto' });
   }
 });
 
