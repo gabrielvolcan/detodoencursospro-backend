@@ -33,7 +33,7 @@ const productoSchema = new mongoose.Schema({
   },
   archivoURL: {
     type: String,
-    required: [true, 'La URL del archivo es obligatoria']
+    default: '' // Opcional: vacío si el producto es de solo lectura (libro en plataforma)
   },
   archivoPeso: {
     type: String,
@@ -51,6 +51,17 @@ const productoSchema = new mongoose.Schema({
   precios: {
     type: mongoose.Schema.Types.Mixed,
     default: {}
+  },
+
+  // ========================================
+  // 📖 LIBRO PARA LECTOR EN PLATAFORMA (solo lectura, sin descarga)
+  // El archivo se guarda en GridFS; acá solo va la referencia.
+  // ========================================
+  libro: {
+    archivoId: { type: mongoose.Schema.Types.ObjectId, default: null }, // _id del archivo en GridFS
+    formato: { type: String, enum: ['pdf', 'epub', null], default: null },
+    nombreOriginal: { type: String, default: '' },
+    soloLectura: { type: Boolean, default: true } // true = se lee en la web, no se descarga
   },
   
   // ========================================
