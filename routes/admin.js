@@ -133,7 +133,55 @@ router.get('/dashboard', auth, esAdmin, async (req, res) => {
       .populate('cursos.curso', 'titulo')
       .sort({ createdAt: -1 })
       .limit(10);
-    
+
+    // 🆕 Pagos pendientes de aprobación
+    const pagosPendientes = await Compra.countDocuments({
+      estadoPago: { $in: ['pendiente', 'en_revision'] }
+    });
+
+    // 🆕 Mes anterior (para comparativas vs mes actual)
+    const inicioMesAnterior = new Date(inicioMes);
+    inicioMesAnterior.setMonth(inicioMesAnterior.getMonth() - 1);
+    const ventasMesAnterior = await Compra.countDocuments({
+      estadoPago: 'aprobado',
+      createdAt: { $gte: inicioMesAnterior, $lt: inicioMes }
+    });
+    const ingMesAntAgg = await Compra.aggregate([
+      { $match: { estadoPago: 'aprobado', createdAt: { $gte: inicioMesAnterior, $lt: inicioMes } } },
+      { $group: { _id: null, total: { $sum: '$total' } } }
+    ]);
+    const ingresosMesAnterior = ingMesAntAgg.length ? ingMesAntAgg[0].total : 0;
+    const usuariosMes = await Usuario.countDocuments({ rol: 'usuario', createdAt: { $gte: inicioMes } });
+    const usuariosMesAnterior = await Usuario.countDocuments({
+      rol: 'usuario',
+      createdAt: { $gte: inicioMesAnterior, $lt: inicioMes }
+    });
+
+    // 🆕 Top productos por ingresos
+    const productosIngresos = await Compra.aggregate([
+      { $match: { estadoPago: 'aprobado' } },
+      { $unwind: '$productos' },
+      { $group: { _id: '$productos.producto', ingresos: { $sum: '$productos.precio' }, ventas: { $sum: 1 } } },
+      { $sort: { ingresos: -1 } },
+      { $limit: 5 },
+      { $lookup: { from: 'productos', localField: '_id', foreignField: '_id', as: 'prod' } },
+      { $unwind: '$prod' },
+      { $project: { _id: 1, ingresos: 1, ventas: 1, titulo: '$prod.titulo', imagen: '$prod.imagen' } }
+    ]);
+
+    // 🆕 Serie diaria de ventas (últimos 30 días) para el gráfico con filtro
+    const hace30 = new Date();
+    hace30.setDate(hace30.getDate() - 29);
+    hace30.setHours(0, 0, 0, 0);
+    const ventasPorDia = await Compra.aggregate([
+      { $match: { estadoPago: 'aprobado', createdAt: { $gte: hace30 } } },
+      { $group: {
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+          total: { $sum: '$total' },
+          cantidad: { $sum: 1 }
+      } }
+    ]);
+
     res.json({
       estadisticas: {
         totalCursos,
@@ -141,13 +189,21 @@ router.get('/dashboard', auth, esAdmin, async (req, res) => {
         ventasCompletadas,
         ingresosTotal,
         ventasMes,
-        ingresosMesTotal
+        ingresosMesTotal,
+        pagosPendientes,
+        ventasMesAnterior,
+        ingresosMesAnterior,
+        usuariosMes,
+        usuariosMesAnterior
       },
       cursosPopulares,
-      ultimasVentas
+      productosIngresos,
+      ultimasVentas,
+      ventasPorDia
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Error en dashboard:', error);
+    res.status(500).json({ error: 'Error al cargar el dashboard' });
   }
 });
 
