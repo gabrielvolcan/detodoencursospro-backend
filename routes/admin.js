@@ -328,7 +328,8 @@ router.post('/aprobar-pago/:compraId', auth, esAdmin, async (req, res) => {
   try {
     const compra = await Compra.findById(req.params.compraId)
       .populate('usuario')
-      .populate('cursos.curso');
+      .populate('cursos.curso')
+      .populate('productos.producto');
 
     if (!compra) {
       return res.status(404).json({ error: 'Compra no encontrada' });
@@ -385,8 +386,8 @@ router.post('/aprobar-pago/:compraId', auth, esAdmin, async (req, res) => {
 
     await usuario.save();
 
-    // ✅ CORREGIDO: Usar enviarEmailCompraAprobada en vez de enviarEmailAprobacion
-    await enviarEmailCompraAprobada(usuario, compra.cursos.map(c => c.curso), compra);
+    // Email de aprobación (lista cursos y productos, y dirige al lugar correcto)
+    await enviarEmailCompraAprobada(usuario, compra);
 
     // 📣 Notificar a Telegram
     notificarPagoAprobado({

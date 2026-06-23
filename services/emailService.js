@@ -196,8 +196,32 @@ const enviarEmailRecuperacion = async (email, nombre, token) => {
 // ========================================
 // ✅ EMAIL DE COMPRA APROBADA
 // ========================================
-const enviarEmailCompraAprobada = async (usuario, cursos, compra) => {
-  const listaCursos = cursos.map(curso => `<li>${escaparHtml(curso.titulo)}</li>`).join('');
+const enviarEmailCompraAprobada = async (usuario, compra) => {
+  const cursos = (compra.cursos || []).map(c => c.curso).filter(Boolean);
+  const productos = (compra.productos || []).map(p => p.producto).filter(Boolean);
+  const tieneCursos = cursos.length > 0;
+  const tieneProductos = productos.length > 0;
+
+  const listaItems = [
+    ...cursos.map(c => `<li>📚 ${escaparHtml(c.titulo)} (curso)</li>`),
+    ...productos.map(p => `<li>📖 ${escaparHtml(p.titulo)} (producto)</li>`)
+  ].join('');
+
+  // CTA e instrucción según lo que compró
+  let ctaUrl = `${process.env.FRONTEND_URL}/mis-compras`;
+  let ctaTexto = 'Ver mi compra';
+  let instruccion = 'Ya puedes acceder a lo que compraste desde tu cuenta.';
+  if (tieneCursos && !tieneProductos) {
+    ctaUrl = `${process.env.FRONTEND_URL}/mis-cursos-aprender`;
+    ctaTexto = 'Ver Mis Cursos';
+    instruccion = 'Ya puedes empezar a estudiar tus cursos.';
+  } else if (!tieneCursos && tieneProductos) {
+    ctaUrl = `${process.env.FRONTEND_URL}/mis-compras`;
+    ctaTexto = 'Leer / Descargar';
+    instruccion = 'Ya puedes leer o descargar lo que compraste desde "Mis Compras".';
+  } else if (tieneCursos && tieneProductos) {
+    instruccion = 'Tus cursos están en "Mis Cursos" y tus libros/productos en "Mis Compras".';
+  }
 
   try {
     await resend.emails.send({
@@ -261,16 +285,16 @@ const enviarEmailCompraAprobada = async (usuario, cursos, compra) => {
             <h2>Hola ${escaparHtml(usuario.nombre)},</h2>
             <p>¡Excelentes noticias! Tu pago de <strong>${escaparHtml(compra.moneda)} ${escaparHtml(compra.total)}</strong> ha sido verificado y aprobado exitosamente.</p>
             
-            <p><strong>Ya puedes acceder a tus cursos:</strong></p>
+            <p><strong>${instruccion}</strong></p>
             <ul>
-              ${listaCursos}
+              ${listaItems}
             </ul>
-            
+
             <div style="text-align: center;">
-              <a href="${process.env.FRONTEND_URL}/mis-cursos-aprender" class="btn">Ver Mis Cursos</a>
+              <a href="${ctaUrl}" class="btn">${ctaTexto}</a>
             </div>
-            
-            <p>¡Comienza tu aprendizaje ahora mismo y alcanza tus metas! 🚀</p>
+
+            <p>¡Gracias por tu compra! 🚀</p>
           </div>
           <div class="footer">
             <p>© 2025 Detodo en Cursos. Todos los derechos reservados.</p>
