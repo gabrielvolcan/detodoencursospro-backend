@@ -120,27 +120,9 @@ const notificarPagoRechazado = ({ nombre, email, total, moneda, motivo }) => {
   enviarMensaje(mensaje);
 };
 
-const notificarPagoStripe = ({ nombre, email, total, cursos }) => {
-  const cursosTexto = cursos?.map(c => `  • ${c}`).join('\n') || '  • (sin detalle)';
-  const mensaje =
-`💳 <b>PAGO STRIPE EXITOSO</b>
-
-👤 <b>Cliente:</b> ${nombre}
-📧 <b>Email:</b> ${email}
-
-📚 <b>Cursos desbloqueados:</b>
-${cursosTexto}
-
-💰 <b>Total:</b> $${total} USD
-🤖 <i>Aprobado automáticamente por Stripe</i>`;
-
-  enviarMensaje(mensaje);
-};
-
 module.exports = {
   notificarNuevaCompra,
   notificarComprobanteSubido,
   notificarPagoAprobado,
-  notificarPagoRechazado,
-  notificarPagoStripe
+  notificarPagoRechazado
 };

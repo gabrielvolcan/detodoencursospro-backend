@@ -54,7 +54,7 @@ const compraSchema = new mongoose.Schema({
   metodoPago: {
     tipo: {
       type: String,
-      enum: ['stripe', 'transferencia', 'yape', 'plin', 'mercadopago', 'pagomovil', 'binance', 'paypal'],
+      enum: ['transferencia', 'yape', 'plin', 'mercadopago', 'pagomovil', 'binance', 'paypal'],
       default: 'transferencia'
     },
     nombre: String,
@@ -73,14 +73,6 @@ const compraSchema = new mongoose.Schema({
     // select:false => NO se incluye en listados; solo se trae explícito al servirla.
     data: { type: Buffer, select: false },
     fechaSubida: Date
-  },
-  stripePaymentId: {
-    type: String,
-    default: null
-  },
-  stripeSessionId: {
-    type: String,
-    default: null
   },
   datosFacturacion: {
     nombre: String,

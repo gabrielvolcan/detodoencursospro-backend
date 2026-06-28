@@ -64,9 +64,6 @@ app.use('/api/', limitadorGeneral);
 // MIDDLEWARE GENERAL
 // ========================================
 
-// Para webhook de Stripe (debe ir antes de express.json())
-app.use('/api/pagos/webhook', express.raw({ type: 'application/json' }));
-
 // Límite de 10kb por request (previene ataques de body oversized)
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
@@ -89,7 +86,6 @@ mongoose.connect(process.env.MONGODB_URI)
 // ========================================
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/cursos', require('./routes/cursos'));
-app.use('/api/pagos', require('./routes/pagos'));
 app.use('/api/pagos-manual', require('./routes/pagosManual'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/email-masivo', emailMasivoRoutes);
@@ -122,7 +118,6 @@ app.get('/', (req, res) => {
       auth: '/api/auth',
       cursos: '/api/cursos',
       productos: '/api/productos',
-      pagos: '/api/pagos',
       admin: '/api/admin'
     }
   });

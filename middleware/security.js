@@ -100,17 +100,6 @@ const limitadorEmailMasivo = rateLimit({
 // ========================================
 
 /**
- * Limpia strings de caracteres peligrosos para XSS básico.
- * Elimina < > " ' ; que se usan en inyecciones HTML/JS.
- */
-const sanitizarString = (str) => {
-  if (typeof str !== 'string') return str;
-  return str
-    .trim()
-    .replace(/[<>"'`;]/g, ''); // Eliminar caracteres peligrosos para XSS
-};
-
-/**
  * Escapa entidades HTML para interpolar de forma segura datos del usuario
  * dentro de plantillas HTML (emails). Previene inyección de HTML/phishing.
  */
@@ -132,21 +121,6 @@ const esEmailValido = (email) => {
   return regex.test(email);
 };
 
-/**
- * Middleware que sanitiza body completo de la request.
- * Limpia strings en el primer nivel del body.
- */
-const sanitizarBody = (req, res, next) => {
-  if (req.body && typeof req.body === 'object') {
-    for (const key of Object.keys(req.body)) {
-      if (typeof req.body[key] === 'string') {
-        req.body[key] = sanitizarString(req.body[key]);
-      }
-    }
-  }
-  next();
-};
-
 module.exports = {
   limitadorGeneral,
   limitadorLogin,
@@ -154,8 +128,6 @@ module.exports = {
   limitadorRecuperacion,
   limitadorSubidaArchivos,
   limitadorEmailMasivo,
-  sanitizarBody,
   esEmailValido,
-  sanitizarString,
   escaparHtml
 };
