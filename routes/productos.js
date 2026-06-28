@@ -247,19 +247,23 @@ router.get('/:id/archivos/:archivoId/descargar', auth, async (req, res) => {
 // ========================================
 router.post('/', auth, esAdmin, async (req, res) => {
   try {
-    const { 
-      titulo, 
-      descripcion, 
-      tipo, 
-      categoria, 
-      imagen, 
-      precioUSD, 
+    const {
+      titulo,
+      descripcion,
+      subtitulo,
+      descripcionLarga,
+      tipo,
+      categoria,
+      imagen,
+      imagenes,
+      incluye,
+      precioUSD,
       archivoURL,
       archivoPeso,
       gratis,
       destacado
     } = req.body;
-    
+
     // Validación (archivoURL es opcional: puede ser un producto de solo lectura)
     if (!titulo || !descripcion || !tipo || !categoria) {
       return res.status(400).json({
@@ -270,9 +274,13 @@ router.post('/', auth, esAdmin, async (req, res) => {
     const productoNuevo = new Producto({
       titulo: titulo.trim(),
       descripcion: descripcion.trim(),
+      subtitulo: (subtitulo || '').trim(),
+      descripcionLarga: (descripcionLarga || '').trim(),
       tipo,
       categoria: categoria.trim(),
       imagen: imagen?.trim() || 'https://via.placeholder.com/400x300?text=Producto',
+      imagenes: Array.isArray(imagenes) ? imagenes.filter(Boolean) : [],
+      incluye: Array.isArray(incluye) ? incluye.filter(Boolean) : [],
       precioUSD: gratis ? 0 : (parseFloat(precioUSD) || 0),
       archivoURL: (archivoURL || '').trim(),
       archivoPeso: archivoPeso?.trim() || '',
