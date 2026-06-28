@@ -7,6 +7,8 @@ const Producto = require('../models/Producto');
 const { auth } = require('../middleware/auth');
 const { notificarNuevaCompra, notificarComprobanteSubido } = require('../services/telegramService');
 const { limitadorSubidaArchivos } = require('../middleware/security');
+const { PAISES_VALIDOS, precioItemPorPais } = require('../utils/precios');
+const { obtenerMetodosPago } = require('../config/metodosPago');
 const multer = require('multer');
 const path = require('path');
 const crypto = require('crypto');
@@ -52,6 +54,17 @@ function validarMagicBytes(buf) {
   return false;
 }
 
+// Métodos de pago del país solicitado (datos sensibles: solo usuarios autenticados).
+// Devuelve únicamente el país pedido, nunca el listado completo.
+router.get('/metodos-pago/:pais', auth, (req, res) => {
+  try {
+    const metodos = obtenerMetodosPago(req.params.pais);
+    res.json(metodos);
+  } catch (error) {
+    res.status(500).json({ error: 'No se pudieron obtener los métodos de pago' });
+  }
+});
+
 // Crear orden de compra manual (sin Stripe)
 router.post('/crear-orden-manual', auth, async (req, res) => {
   try {
@@ -71,39 +84,17 @@ router.post('/crear-orden-manual', auth, async (req, res) => {
     }
 
     // Validar que pais sea válido
-    const paisesValidos = ['peru', 'chile', 'argentina', 'uruguay', 'venezuela', 'internacional'];
     const paisNormalizado = pais ? pais.toLowerCase() : 'internacional';
 
-    if (!paisesValidos.includes(paisNormalizado)) {
+    if (!PAISES_VALIDOS.includes(paisNormalizado)) {
       return res.status(400).json({ error: 'País no válido' });
     }
 
     let total = 0;
     let monedaFinal = moneda || 'USD';
 
-    // Tasas oficiales (mismas que el modelo Curso) y moneda por país.
-    const TASAS = { peru: 3.36, chile: 894, argentina: 1505, uruguay: 38.9, venezuela: 50, internacional: 1 };
-    const MONEDA_PAIS = { peru: 'PEN', chile: 'CLP', argentina: 'ARS', uruguay: 'UYU', venezuela: 'VES', internacional: 'USD' };
-
-    // Helper: precio de un ítem (curso o producto) según el país.
-    // Devuelve { precio, moneda } o null si no tiene precio configurado.
-    const calcularPrecio = (item) => {
-      if (item.precios && item.precios[paisNormalizado] && item.precios[paisNormalizado].monto != null) {
-        return {
-          precio: Number(item.precios[paisNormalizado].monto),
-          moneda: item.precios[paisNormalizado].moneda || MONEDA_PAIS[paisNormalizado]
-        };
-      }
-      // Sin precios por país: convertir precioUSD con la tasa oficial (igual que el frontend)
-      if (item.precioUSD != null && !isNaN(item.precioUSD)) {
-        const tasa = TASAS[paisNormalizado] || 1;
-        return {
-          precio: Math.round(Number(item.precioUSD) * tasa * 100) / 100,
-          moneda: MONEDA_PAIS[paisNormalizado] || 'USD'
-        };
-      }
-      return null;
-    };
+    // Precio de un ítem (curso/producto) según el país, desde la fuente única (utils/precios.js).
+    const calcularPrecio = (item) => precioItemPorPais(item, paisNormalizado);
 
     // Cursos
     const cursos = cursosArr.length
