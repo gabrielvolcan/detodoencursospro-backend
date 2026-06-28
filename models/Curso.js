@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { construirPreciosPorPais } = require('../utils/precios');
 
 const temaSchema = new mongoose.Schema({
   titulo: {
@@ -115,43 +116,9 @@ cursoSchema.pre('save', function(next) {
     this.precioUSD = 0;
   }
 
-  // Calcular precios por país (TASAS ACTUALIZADAS 10 ENERO 2026)
+  // Calcular precios por país desde la fuente única de tasas (utils/precios.js)
   if (this.isModified('precioUSD') || this.isModified('esGratuito')) {
-    const tasas = {
-      peru: 3.36,
-      chile: 894,
-      argentina: 1505,
-      uruguay: 38.9,
-      venezuela: 50,
-      internacional: 1
-    };
-
-    this.precios = {
-      peru: { 
-        monto: (this.precioUSD * tasas.peru).toFixed(2), 
-        moneda: 'PEN' 
-      },
-      chile: { 
-        monto: Math.round(this.precioUSD * tasas.chile), 
-        moneda: 'CLP' 
-      },
-      argentina: { 
-        monto: Math.round(this.precioUSD * tasas.argentina), 
-        moneda: 'ARS' 
-      },
-      uruguay: { 
-        monto: (this.precioUSD * tasas.uruguay).toFixed(2), 
-        moneda: 'UYU' 
-      },
-      venezuela: { 
-        monto: (this.precioUSD * tasas.venezuela).toFixed(2), 
-        moneda: 'VES' 
-      },
-      internacional: { 
-        monto: this.precioUSD, 
-        moneda: 'USD' 
-      }
-    };
+    this.precios = construirPreciosPorPais(this.precioUSD);
   }
   next();
 });

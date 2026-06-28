@@ -339,52 +339,16 @@ router.post('/aprobar-pago/:compraId', auth, esAdmin, async (req, res) => {
       return res.status(400).json({ error: 'Esta compra ya fue aprobada' });
     }
 
+    const estadoAnterior = compra.estadoPago;
     compra.estadoPago = 'aprobado';
     compra.fechaAprobacion = new Date();
     compra.aprobadoPor = req.usuario._id;
     await compra.save();
 
-    const usuario = await Usuario.findById(compra.usuario._id);
+    // Acreditar cursos y productos al usuario (lógica centralizada, consistente con cambiar-estado)
+    await sincronizarCursosPorEstado(compra, estadoAnterior, 'aprobado');
 
-    for (const item of compra.cursos) {
-      const yaComprado = usuario.cursosComprados.some(
-        c => c.curso.toString() === item.curso._id.toString()
-      );
-
-      if (!yaComprado) {
-        usuario.cursosComprados.push({
-          curso: item.curso._id,
-          fechaCompra: new Date(),
-          precioCompra: item.precio,
-          progresoVideos: [],
-          completado: false
-        });
-
-        await Curso.findByIdAndUpdate(item.curso._id, {
-          $inc: { estudiantes: 1 }
-        });
-      }
-    }
-
-    // Acreditar productos digitales de la compra
-    if (!usuario.productosComprados) usuario.productosComprados = [];
-    for (const item of (compra.productos || [])) {
-      const prodId = item.producto?._id || item.producto;
-      const yaComprado = usuario.productosComprados.some(
-        p => (p.producto?.toString() === prodId.toString()) && p.estadoPago === 'aprobado'
-      );
-      if (!yaComprado) {
-        usuario.productosComprados.push({
-          producto: prodId,
-          estadoPago: 'aprobado',
-          fechaCompra: new Date(),
-          precio: item.precio
-        });
-        await Producto.findByIdAndUpdate(prodId, { $inc: { totalCompradores: 1, totalVentas: 1 } });
-      }
-    }
-
-    await usuario.save();
+    const usuario = compra.usuario; // poblado arriba; se usa para email y notificación
 
     // Email de aprobación (lista cursos y productos, y dirige al lugar correcto)
     await enviarEmailCompraAprobada(usuario, compra);
