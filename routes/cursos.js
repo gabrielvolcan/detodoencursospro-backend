@@ -76,8 +76,9 @@ router.post('/:id/inscripcion-gratuita', auth, async (req, res) => {
       return res.status(404).json({ error: 'Curso no encontrado' });
     }
 
-    // Validación 2: El curso es realmente gratuito (alineado con el frontend y el registro)
-    if (!(curso.esGratuito === true || curso.precioUSD === 0)) {
+    // Validación 2: El curso es realmente gratuito. Se exige el flag esGratuito
+    // explícito (un precioUSD en 0 por defecto/sin configurar NO regala el curso).
+    if (curso.esGratuito !== true) {
       return res.status(400).json({ error: 'Este curso no es gratuito' });
     }
 
@@ -234,13 +235,19 @@ router.post('/:cursoId/marcar-visto', auth, async (req, res) => {
       return res.status(403).json({ mensaje: 'No tienes acceso a este curso' });
     }
 
+    // Validar que el temaId corresponda a una lección real del curso.
+    // Evita inflar el progreso (y autogenerar el certificado) con lecciones falsas.
+    const curso = await Curso.findById(cursoId);
+    if (!esTemaValido(curso, temaId)) {
+      return res.status(400).json({ mensaje: 'Lección no válida' });
+    }
+
     // Agregar temaId si no existe
     if (!cursoComprado.progresoVideos.includes(temaId)) {
       cursoComprado.progresoVideos.push(temaId);
     }
 
     // Verificar si completó el curso
-    const curso = await Curso.findById(cursoId);
     const totalTemas = contarTotalTemas(curso);
     const videosVistos = cursoComprado.progresoVideos.length;
 
@@ -465,6 +472,19 @@ router.delete('/:id', auth, esAdmin, async (req, res) => {
 // ========================================
 // 🔧 FUNCIONES AUXILIARES
 // ========================================
+
+// Valida que un temaId con formato "moduloIndex-temaIndex" apunte a una
+// lección que realmente existe en el temario del curso.
+function esTemaValido(curso, temaId) {
+  if (!curso || typeof temaId !== 'string') return false;
+  const partes = temaId.split('-');
+  if (partes.length !== 2) return false;
+  const mi = Number(partes[0]);
+  const ti = Number(partes[1]);
+  if (!Number.isInteger(mi) || !Number.isInteger(ti) || mi < 0 || ti < 0) return false;
+  const modulo = (curso.temario || [])[mi];
+  return !!(modulo && Array.isArray(modulo.temas) && modulo.temas[ti]);
+}
 
 function contarTotalTemas(curso) {
   let total = 0;

@@ -85,7 +85,7 @@ router.post('/registro', limitadorRegistro, async (req, res) => {
         const Curso = require('../models/Curso');
         const curso = await Curso.findById(cursoGratuitoId);
         
-        if (curso && (curso.esGratuito === true || curso.precioUSD === 0)) {
+        if (curso && curso.esGratuito === true) {
           console.log('✅ Inscribiendo usuario al curso gratuito:', curso.titulo);
           
           usuario.cursosComprados.push({
