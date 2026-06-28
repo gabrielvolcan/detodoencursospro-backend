@@ -9,11 +9,13 @@ const METODOS_PAGO_POR_PAIS = {
     nombre: 'Internacional',
     metodos: [
       {
-        tipo: 'transferencia',
-        nombre: 'Transferencia Internacional',
-        instrucciones: `Contactar vía WhatsApp para coordinar pago
-Email: detodoencursos@gmail.com
-Concepto: Pago Curso + Tu Nombre`
+        tipo: 'paypal',
+        nombre: 'PayPal',
+        instrucciones: `Realiza tu pago por PayPal a:
+gabrielalejandrovolcan@gmail.com
+Concepto: Pago Curso + Tu Nombre
+Luego sube la captura de tu pago como comprobante.
+¿Dudas? Escríbenos a contacto@detodoencursos.com`
       }
     ]
   },
