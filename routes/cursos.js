@@ -35,7 +35,8 @@ router.get('/', async (req, res) => {
     }
     
     const cursos = await Curso.find(filtro).sort({ destacado: -1, createdAt: -1 });
-    res.json(cursos);
+    // 🔒 No exponer los videoUrl del temario en el catálogo público.
+    res.json(cursos.map(cursoPublico));
   } catch (error) {
     console.error('Error obteniendo cursos:', error);
     res.status(500).json({ error: 'Error al obtener los cursos' });
@@ -404,7 +405,8 @@ router.get('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Curso no encontrado' });
     }
 
-    res.json(curso);
+    // 🔒 Detalle público: temario con títulos pero SIN los videoUrl (los entrega /aprender)
+    res.json(cursoPublico(curso));
   } catch (error) {
     console.error('Error obteniendo curso:', error);
     res.status(500).json({ error: 'Error al obtener el curso' });
@@ -471,6 +473,22 @@ router.delete('/:id', auth, esAdmin, async (req, res) => {
 // ========================================
 // 🔧 FUNCIONES AUXILIARES
 // ========================================
+
+// 🔒 Devuelve el curso para vistas PÚBLICAS: conserva los títulos del temario
+// (módulos y lecciones) para la preventa, pero ELIMINA los videoUrl. Los enlaces
+// de video solo se entregan en /aprender, que valida que el usuario haya comprado.
+function cursoPublico(curso) {
+  const obj = curso && curso.toObject ? curso.toObject() : { ...curso };
+  if (Array.isArray(obj.temario)) {
+    obj.temario = obj.temario.map((m) => ({
+      ...m,
+      temas: Array.isArray(m.temas)
+        ? m.temas.map((t) => { const { videoUrl, ...resto } = t; return resto; })
+        : m.temas
+    }));
+  }
+  return obj;
+}
 
 // Valida que un temaId con formato "moduloIndex-temaIndex" apunte a una
 // lección que realmente existe en el temario del curso.
