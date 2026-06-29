@@ -453,17 +453,16 @@ router.put('/:id', auth, esAdmin, async (req, res) => {
 // Eliminar curso (solo admin - soft delete)
 router.delete('/:id', auth, esAdmin, async (req, res) => {
   try {
-    const curso = await Curso.findByIdAndUpdate(
-      req.params.id,
-      { activo: false },
-      { new: true }
-    );
-    
+    // Borrado real: el curso desaparece por completo del panel.
+    // Las compras que lo referencien quedan con curso=null y se filtran
+    // en "Mis Cursos" / "Mis Compras" (ya contemplado en esas vistas).
+    const curso = await Curso.findByIdAndDelete(req.params.id);
+
     if (!curso) {
       return res.status(404).json({ error: 'Curso no encontrado' });
     }
-    
-    res.json({ mensaje: 'Curso desactivado exitosamente' });
+
+    res.json({ mensaje: 'Curso eliminado exitosamente' });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
