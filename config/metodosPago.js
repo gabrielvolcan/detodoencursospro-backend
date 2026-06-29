@@ -91,10 +91,47 @@ Concepto: Pago Curso + Tu Nombre`
   }
 };
 
-// Devuelve los métodos del país pedido; cae a 'internacional' si no existe.
+// Lista de países soportados (orden para el panel admin)
+const PAISES = ['internacional', 'peru', 'chile', 'argentina', 'venezuela', 'uruguay'];
+
+// Devuelve los métodos del país pedido (estático); cae a 'internacional' si no existe.
 const obtenerMetodosPago = (codigoPais) => {
   const codigo = (codigoPais || 'internacional').toLowerCase();
   return METODOS_PAGO_POR_PAIS[codigo] || METODOS_PAGO_POR_PAIS.internacional;
 };
 
-module.exports = { METODOS_PAGO_POR_PAIS, obtenerMetodosPago };
+// Versión que lee de la BD (editable desde el admin) con fallback al config.
+const obtenerMetodosPagoDB = async (codigoPais) => {
+  const codigo = (codigoPais || 'internacional').toLowerCase();
+  try {
+    const MetodoPago = require('../models/MetodoPago');
+    const doc = await MetodoPago.findOne({ pais: codigo }).lean();
+    if (doc && Array.isArray(doc.metodos) && doc.metodos.length) {
+      return { nombre: doc.nombre || obtenerMetodosPago(codigo).nombre, metodos: doc.metodos };
+    }
+  } catch (e) {
+    // Si falla la BD, usamos el config estático.
+  }
+  return obtenerMetodosPago(codigo);
+};
+
+// Todos los países para el panel admin: doc de BD si existe, si no el default del config.
+const obtenerTodosMetodosAdmin = async () => {
+  let docs = [];
+  try {
+    const MetodoPago = require('../models/MetodoPago');
+    docs = await MetodoPago.find().lean();
+  } catch (e) { docs = []; }
+  const porPais = Object.fromEntries(docs.map((d) => [d.pais, d]));
+  return PAISES.map((codigo) => {
+    const def = METODOS_PAGO_POR_PAIS[codigo] || { nombre: codigo, metodos: [] };
+    const db = porPais[codigo];
+    return {
+      pais: codigo,
+      nombre: (db && db.nombre) || def.nombre,
+      metodos: (db && Array.isArray(db.metodos) && db.metodos.length) ? db.metodos : def.metodos
+    };
+  });
+};
+
+module.exports = { METODOS_PAGO_POR_PAIS, PAISES, obtenerMetodosPago, obtenerMetodosPagoDB, obtenerTodosMetodosAdmin };

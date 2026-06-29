@@ -6,6 +6,8 @@ const Usuario = require('../models/Usuario');
 const Compra = require('../models/Compra');
 const Producto = require('../models/Producto');
 const { auth, esAdmin } = require('../middleware/auth');
+const MetodoPago = require('../models/MetodoPago');
+const { obtenerTodosMetodosAdmin } = require('../config/metodosPago');
 const { enviarEmailCompraAprobada, enviarEmailRechazo } = require('../services/emailService');
 const { notificarPagoAprobado, notificarPagoRechazado } = require('../services/telegramService');
 
@@ -709,6 +711,54 @@ router.get('/notificaciones/contador', auth, esAdmin, async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// ========================================
+// 💳 MÉTODOS DE PAGO (editar cuentas desde el panel)
+// ========================================
+
+// Listar todos los métodos por país (BD si existe, si no el default del config)
+router.get('/metodos-pago', auth, esAdmin, async (req, res) => {
+  try {
+    const data = await obtenerTodosMetodosAdmin();
+    res.json(data);
+  } catch (error) {
+    console.error('Error obteniendo métodos de pago:', error);
+    res.status(500).json({ error: 'Error al obtener métodos de pago' });
+  }
+});
+
+// Guardar (upsert) los métodos de un país
+router.put('/metodos-pago/:pais', auth, esAdmin, async (req, res) => {
+  try {
+    const pais = String(req.params.pais || '').toLowerCase().trim();
+    if (!pais) return res.status(400).json({ error: 'País requerido' });
+
+    const { nombre, metodos } = req.body;
+    if (!Array.isArray(metodos)) {
+      return res.status(400).json({ error: 'Formato inválido: metodos debe ser una lista' });
+    }
+
+    // Sanea cada método (solo campos permitidos) y descarta los vacíos
+    const metodosLimpios = metodos
+      .filter((m) => m && (String(m.nombre || '').trim() || String(m.instrucciones || '').trim()))
+      .map((m) => ({
+        tipo: String(m.tipo || 'transferencia').trim() || 'transferencia',
+        nombre: String(m.nombre || '').trim(),
+        instrucciones: String(m.instrucciones || '').trim()
+      }));
+
+    const doc = await MetodoPago.findOneAndUpdate(
+      { pais },
+      { pais, nombre: String(nombre || pais).trim(), metodos: metodosLimpios },
+      { new: true, upsert: true, setDefaultsOnInsert: true }
+    );
+
+    res.json({ mensaje: 'Métodos de pago actualizados', metodoPago: doc });
+  } catch (error) {
+    console.error('Error guardando métodos de pago:', error);
+    res.status(500).json({ error: 'Error al guardar métodos de pago' });
   }
 });
 

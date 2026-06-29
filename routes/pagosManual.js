@@ -8,7 +8,7 @@ const { auth } = require('../middleware/auth');
 const { notificarNuevaCompra, notificarComprobanteSubido } = require('../services/telegramService');
 const { limitadorSubidaArchivos } = require('../middleware/security');
 const { PAISES_VALIDOS, precioItemPorPais } = require('../utils/precios');
-const { obtenerMetodosPago } = require('../config/metodosPago');
+const { obtenerMetodosPago, obtenerMetodosPagoDB } = require('../config/metodosPago');
 const multer = require('multer');
 const path = require('path');
 const crypto = require('crypto');
@@ -56,9 +56,9 @@ function validarMagicBytes(buf) {
 
 // Métodos de pago del país solicitado (datos sensibles: solo usuarios autenticados).
 // Devuelve únicamente el país pedido, nunca el listado completo.
-router.get('/metodos-pago/:pais', auth, (req, res) => {
+router.get('/metodos-pago/:pais', auth, async (req, res) => {
   try {
-    const metodos = obtenerMetodosPago(req.params.pais);
+    const metodos = await obtenerMetodosPagoDB(req.params.pais);
     res.json(metodos);
   } catch (error) {
     res.status(500).json({ error: 'No se pudieron obtener los métodos de pago' });
