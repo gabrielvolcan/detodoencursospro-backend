@@ -88,6 +88,7 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/cursos', require('./routes/cursos'));
 app.use('/api/pagos-manual', require('./routes/pagosManual'));
 app.use('/api/admin', require('./routes/admin'));
+app.use('/api/analytics', require('./routes/analytics'));
 app.use('/api/email-masivo', emailMasivoRoutes);
 
 // ========================================
